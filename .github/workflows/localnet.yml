@@ -77,10 +77,11 @@ jobs:
           btcli tx register-subnet -w consequent-owner -H default --network local -y
           # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
           btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
-          # Localnet burned registration must bypass the default MEV shield; the
-          # shielded outer carrier was rejected with BadProof on run #1.
-          btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local --no-mev-shield -y
-          btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local --no-mev-shield -y
+          # Use the canonical v11 SDK intent path for neuron registration. The
+          # SDK owns the runtime-required MEV shielding semantics for BurnedRegister.
+          python scripts/register_neurons.py --network local --netuid 2 \
+            --wallet consequent-validator --wallet consequent-miner \
+            | tee /tmp/neuron-registration.json
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-before.json
 
       - name: Start authenticated Consequent miner service
@@ -149,6 +150,7 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/root-metagraph.json
+            /tmp/neuron-registration.json
             /tmp/consequent-metagraph-before.json
             /tmp/consequent-metagraph-after.json
             /tmp/serve-axon.txt
