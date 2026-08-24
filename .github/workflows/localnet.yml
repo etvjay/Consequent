@@ -171,7 +171,7 @@ jobs:
           CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
         run: |
           set -euo pipefail
-          python scripts/chain_probe.py | tee /tmp/chain-probe.json
+          python scripts/chain_probe.py --require-registered --require-served-miner | tee /tmp/chain-probe.json
 
       - name: Run real signed validator to miner round trip
         env:
