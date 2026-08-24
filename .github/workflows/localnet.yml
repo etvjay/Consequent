@@ -10,7 +10,7 @@ permissions:
 jobs:
   bittensor-localnet:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
@@ -201,6 +201,20 @@ jobs:
           set -euo pipefail
           python scripts/localnet_roundtrip.py | tee /tmp/localnet-roundtrip.json
 
+      - name: Execute and read back localnet SetWeights
+        run: |
+          set -euo pipefail
+          MINER_HOTKEY="$(python - <<'PY'
+          import bittensor as bt
+          print(bt.Wallet(name='consequent-miner', hotkey='default').hotkey.ss58_address)
+          PY
+          )"
+          python scripts/localnet_weights.py \
+            --network local --netuid 2 \
+            --wallet consequent-owner --hotkey default \
+            --target-hotkey "$MINER_HOTKEY" \
+            | tee /tmp/localnet-weights.json
+
       - name: Upload localnet evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -216,6 +230,7 @@ jobs:
             /tmp/serve-axon.txt
             /tmp/chain-probe.json
             /tmp/localnet-roundtrip.json
+            /tmp/localnet-weights.json
             /tmp/consequent-miner.log
 
       - name: Show diagnostics on failure
@@ -226,5 +241,6 @@ jobs:
           cat /tmp/serve-axon.txt 2>/dev/null || true
           cat /tmp/chain-probe.json 2>/dev/null || true
           cat /tmp/localnet-roundtrip.json 2>/dev/null || true
+          cat /tmp/localnet-weights.json 2>/dev/null || true
           cat /tmp/consequent-miner.log 2>/dev/null || true
           docker logs consequent-local-chain 2>/dev/null || true
