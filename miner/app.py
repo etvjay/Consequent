@@ -22,7 +22,7 @@ async def _load_metagraph(settings: NetworkSettings):
     import bittensor as bt
 
     assert settings.netuid is not None
-    async with bt.Subtensor(network=settings.network) as client:
+    async with bt.Subtensor(settings.network) as client:
         return await client.subnets.metagraph(netuid=settings.netuid)
 
 
