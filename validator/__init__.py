@@ -1,0 +1,1 @@
+"""Consequent validator service."""
