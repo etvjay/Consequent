@@ -1,0 +1,161 @@
+name: localnet
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bittensor-localnet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Consequent and Bittensor 11
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Start fresh Subtensor localnet
+        run: |
+          docker run -d --rm --name consequent-local-chain \
+            -p 9944:9944 -p 9945:9945 \
+            ghcr.io/raofoundation/subtensor-localnet:devnet
+
+          for i in $(seq 1 60); do
+            if btcli query metagraph --netuid 1 --network local --json >/tmp/root-metagraph.json 2>/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs consequent-local-chain
+          exit 1
+
+      - name: Create disposable role wallets
+        run: |
+          btcli wallet create -w consequent-owner -H default --no-password >/dev/null
+          btcli wallet create -w consequent-validator -H default --no-password >/dev/null
+          btcli wallet create -w consequent-miner -H default --no-password >/dev/null
+
+      - name: Fund local wallets from Alice dev account
+        run: |
+          python - <<'PY'
+          import asyncio
+          import bittensor as bt
+          from bittensor.keyfiles import Keypair
+
+          async def main():
+              alice = Keypair.create_from_uri('//Alice')
+              roles = [
+                  ('consequent-owner', 2000.0),
+                  ('consequent-validator', 100.0),
+                  ('consequent-miner', 100.0),
+              ]
+              async with bt.Subtensor('local') as client:
+                  for name, amount in roles:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      result = await client.execute(
+                          bt.Transfer(dest_ss58=wallet.coldkeypub.ss58_address, amount_tao=amount),
+                          alice,
+                      )
+                      if not result.success:
+                          raise SystemExit(f'funding {name} failed: {result.error.code}')
+          asyncio.run(main())
+          PY
+
+      - name: Register and activate Consequent development subnet
+        run: |
+          btcli tx register-subnet -w consequent-owner -H default --network local -y
+          # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
+          btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
+          btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local -y
+          btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local -y
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-before.json
+
+      - name: Start authenticated Consequent miner service
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-miner
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+          CONSEQUENT_ADVERTISED_IP: 127.0.0.1
+          CONSEQUENT_ADVERTISED_PORT: '8091'
+          CONSEQUENT_MINER_STRATEGY: useful_generalizing_memory
+        run: |
+          nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port 8091 >/tmp/consequent-miner.log 2>&1 &
+          echo $! >/tmp/consequent-miner.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8091/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/consequent-miner.log
+          exit 1
+
+      - name: Publish miner endpoint with ServeAxon
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-miner
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_ADVERTISED_IP: 127.0.0.1
+          CONSEQUENT_ADVERTISED_PORT: '8091'
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: |
+          python scripts/serve_endpoint.py --execute | tee /tmp/serve-axon.txt
+          sleep 2
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-after.json
+
+      - name: Probe validator registration and discover served miner
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-validator
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: python scripts/chain_probe.py | tee /tmp/chain-probe.json
+
+      - name: Run real signed validator to miner round trip
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-validator
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: python scripts/localnet_roundtrip.py | tee /tmp/localnet-roundtrip.json
+
+      - name: Upload localnet evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consequent-localnet-evidence
+          if-no-files-found: warn
+          path: |
+            /tmp/root-metagraph.json
+            /tmp/consequent-metagraph-before.json
+            /tmp/consequent-metagraph-after.json
+            /tmp/serve-axon.txt
+            /tmp/chain-probe.json
+            /tmp/localnet-roundtrip.json
+            /tmp/consequent-miner.log
+
+      - name: Show diagnostics on failure
+        if: failure()
+        run: |
+          cat /tmp/consequent-miner.log 2>/dev/null || true
+          docker logs consequent-local-chain 2>/dev/null || true
