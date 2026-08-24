@@ -10,7 +10,7 @@ permissions:
 jobs:
   bittensor-localnet:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -25,14 +25,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
 
-      - name: Start fresh Subtensor localnet
+      - name: Start fresh Subtensor localnet with production block timing
         run: |
           set -euo pipefail
           docker run -d --rm --name consequent-local-chain \
             -p 9944:9944 -p 9945:9945 \
-            ghcr.io/raofoundation/subtensor-localnet:devnet
+            ghcr.io/raofoundation/subtensor-localnet:devnet False
 
-          for i in $(seq 1 60); do
+          for i in $(seq 1 90); do
             if btcli query metagraph --netuid 1 --network local --json >/tmp/root-metagraph.json 2>/dev/null; then
               exit 0
             fi
@@ -83,13 +83,13 @@ jobs:
           # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
           btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
 
-          # Current Bittensor requires burned registration to be MEV-shielded.
-          # The CLI's default submission path provides the required shielding;
-          # do not add --no-mev-shield.
+          # Burned registration is MEV-shielded by current Bittensor. Run this
+          # lifecycle with 12-second blocks so the shielded inner extrinsic's
+          # mortal era is representative rather than compressed by fast-block mode.
           btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local -y
-          sleep 2
+          sleep 13
           btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local -y
-          sleep 2
+          sleep 13
 
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-before.json
           python - <<'PY' | tee /tmp/neuron-registration.json
@@ -158,7 +158,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/serve_endpoint.py --execute | tee /tmp/serve-axon.txt
-          sleep 2
+          sleep 13
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-after.json
 
       - name: Probe validator registration and discover served miner
