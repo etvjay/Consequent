@@ -77,8 +77,10 @@ jobs:
           btcli tx register-subnet -w consequent-owner -H default --network local -y
           # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
           btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
-          btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local -y
-          btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local -y
+          # Localnet burned registration must bypass the default MEV shield; the
+          # shielded outer carrier was rejected with BadProof on run #1.
+          btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local --no-mev-shield -y
+          btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local --no-mev-shield -y
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-before.json
 
       - name: Start authenticated Consequent miner service
