@@ -21,11 +21,13 @@ jobs:
 
       - name: Install Consequent and Bittensor 11
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
 
       - name: Start fresh Subtensor localnet
         run: |
+          set -euo pipefail
           docker run -d --rm --name consequent-local-chain \
             -p 9944:9944 -p 9945:9945 \
             ghcr.io/raofoundation/subtensor-localnet:devnet
@@ -42,12 +44,14 @@ jobs:
 
       - name: Create disposable role wallets
         run: |
+          set -euo pipefail
           btcli wallet create -w consequent-owner -H default --no-password >/dev/null
           btcli wallet create -w consequent-validator -H default --no-password >/dev/null
           btcli wallet create -w consequent-miner -H default --no-password >/dev/null
 
       - name: Fund local wallets from Alice dev account
         run: |
+          set -euo pipefail
           python - <<'PY'
           import asyncio
           import bittensor as bt
@@ -74,15 +78,48 @@ jobs:
 
       - name: Register and activate Consequent development subnet
         run: |
+          set -euo pipefail
           btcli tx register-subnet -w consequent-owner -H default --network local -y
           # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
           btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
-          # Use the canonical v11 SDK intent path for neuron registration. The
-          # SDK owns the runtime-required MEV shielding semantics for BurnedRegister.
-          python scripts/register_neurons.py --network local --netuid 2 \
-            --wallet consequent-validator --wallet consequent-miner \
-            | tee /tmp/neuron-registration.json
+
+          # Current Bittensor requires burned registration to be MEV-shielded.
+          # The CLI's default submission path provides the required shielding;
+          # do not add --no-mev-shield.
+          btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local -y
+          sleep 2
+          btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local -y
+          sleep 2
+
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-before.json
+          python - <<'PY' | tee /tmp/neuron-registration.json
+          import asyncio, json
+          import bittensor as bt
+
+          async def main():
+              wallets = [
+                  bt.Wallet(name='consequent-validator', hotkey='default'),
+                  bt.Wallet(name='consequent-miner', hotkey='default'),
+              ]
+              async with bt.Subtensor('local') as client:
+                  mg = await client.subnets.metagraph(netuid=2)
+                  rows = []
+                  for wallet in wallets:
+                      try:
+                          neuron = mg.by_hotkey(wallet.hotkey.ss58_address)
+                      except Exception:
+                          neuron = None
+                      rows.append({
+                          'wallet': wallet.name,
+                          'hotkey': wallet.hotkey.ss58_address,
+                          'registered': neuron is not None,
+                          'uid': int(neuron.uid) if neuron is not None else None,
+                      })
+                  print(json.dumps(rows, indent=2))
+                  if not all(row['registered'] for row in rows):
+                      raise SystemExit('one or more Consequent neuron registrations are missing from metagraph')
+          asyncio.run(main())
+          PY
 
       - name: Start authenticated Consequent miner service
         env:
@@ -96,6 +133,7 @@ jobs:
           CONSEQUENT_ADVERTISED_PORT: '8091'
           CONSEQUENT_MINER_STRATEGY: useful_generalizing_memory
         run: |
+          set -euo pipefail
           nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port 8091 >/tmp/consequent-miner.log 2>&1 &
           echo $! >/tmp/consequent-miner.pid
           for i in $(seq 1 30); do
@@ -118,6 +156,7 @@ jobs:
           CONSEQUENT_ADVERTISED_PORT: '8091'
           CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
         run: |
+          set -euo pipefail
           python scripts/serve_endpoint.py --execute | tee /tmp/serve-axon.txt
           sleep 2
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-after.json
@@ -130,7 +169,9 @@ jobs:
           CONSEQUENT_WALLET: consequent-validator
           CONSEQUENT_HOTKEY: default
           CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
-        run: python scripts/chain_probe.py | tee /tmp/chain-probe.json
+        run: |
+          set -euo pipefail
+          python scripts/chain_probe.py | tee /tmp/chain-probe.json
 
       - name: Run real signed validator to miner round trip
         env:
@@ -140,7 +181,9 @@ jobs:
           CONSEQUENT_WALLET: consequent-validator
           CONSEQUENT_HOTKEY: default
           CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
-        run: python scripts/localnet_roundtrip.py | tee /tmp/localnet-roundtrip.json
+        run: |
+          set -euo pipefail
+          python scripts/localnet_roundtrip.py | tee /tmp/localnet-roundtrip.json
 
       - name: Upload localnet evidence
         if: always()
@@ -161,5 +204,9 @@ jobs:
       - name: Show diagnostics on failure
         if: failure()
         run: |
+          cat /tmp/neuron-registration.json 2>/dev/null || true
+          cat /tmp/serve-axon.txt 2>/dev/null || true
+          cat /tmp/chain-probe.json 2>/dev/null || true
+          cat /tmp/localnet-roundtrip.json 2>/dev/null || true
           cat /tmp/consequent-miner.log 2>/dev/null || true
           docker logs consequent-local-chain 2>/dev/null || true
