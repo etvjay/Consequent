@@ -26,7 +26,7 @@ async def main() -> None:
     weights = build_weight_map(scores)
     wallet = settings.wallet()
 
-    async with bt.Subtensor(network=settings.network) as client:
+    async with bt.Subtensor(settings.network) as client:
         policy, plan = await plan_weights(
             client=client,
             wallet=wallet,
