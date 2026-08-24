@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from validator.chain_state import read_weight_policy, required_version_key
+from validator.chain_state import (
+    read_weight_policy,
+    remaining_weight_rate_limit_blocks,
+    required_version_key,
+)
 
 
 @dataclass
@@ -64,6 +68,19 @@ async def test_read_weight_policy_accepts_bittensor_mapping_shape():
     assert policy.weights_rate_limit == 100
     assert policy.commit_reveal_weights_enabled is True
     assert policy.commit_reveal_period == 1
+
+
+def test_remaining_weight_rate_limit_blocks_tracks_runtime_rule():
+    assert remaining_weight_rate_limit_blocks(current_block=13, last_update=10, rate_limit=100) == 97
+    assert remaining_weight_rate_limit_blocks(current_block=110, last_update=10, rate_limit=100) == 0
+    assert remaining_weight_rate_limit_blocks(current_block=111, last_update=10, rate_limit=100) == 0
+
+
+def test_remaining_weight_rate_limit_blocks_rejects_impossible_state():
+    with pytest.raises(ValueError):
+        remaining_weight_rate_limit_blocks(current_block=9, last_update=10, rate_limit=100)
+    with pytest.raises(ValueError):
+        remaining_weight_rate_limit_blocks(current_block=10, last_update=10, rate_limit=-1)
 
 
 def test_required_version_key_rejects_stale_validator():
