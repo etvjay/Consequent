@@ -55,6 +55,27 @@ async def read_weight_policy(*, client, netuid: int) -> SubnetWeightPolicy:
     )
 
 
+def remaining_weight_rate_limit_blocks(
+    *, current_block: int, last_update: int, rate_limit: int
+) -> int:
+    """Return how many blocks remain before a validator may update weights.
+
+    The Bittensor runtime rejects a SetWeights update when the number of blocks
+    since that UID's last update is less than `weights_rate_limit`. Consequent
+    therefore waits on chain state rather than trying to mutate the subnet's
+    rate-limit policy.
+    """
+    current = int(current_block)
+    last = int(last_update)
+    limit = int(rate_limit)
+    if current < 0 or last < 0 or limit < 0:
+        raise ValueError("block numbers and weights_rate_limit must be non-negative")
+    if last > current:
+        raise ValueError("validator last_update cannot be ahead of current block")
+    elapsed = current - last
+    return max(0, limit - elapsed)
+
+
 def required_version_key(policy: SubnetWeightPolicy, configured: int | None) -> int:
     """Fail before submission if Consequent is below the subnet's version gate."""
     candidate = 0 if configured is None else int(configured)
