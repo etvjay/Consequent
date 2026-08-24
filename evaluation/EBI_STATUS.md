@@ -19,7 +19,7 @@ Bittensor v11 contract tests: CI_PASS — `Subtensor`, `ServeAxon`, `SetWeights`
 
 External network read evidence: `READ_ONLY_TESTNET_PASS` — CI connects to Bittensor network `test` and reads live chain state. This proves connectivity/read compatibility only; it is not testnet subnet evidence.
 
-Strict fresh-chain evidence from GitHub Actions localnet run 32755633843:
+Strict fresh-chain evidence:
 - official Subtensor localnet container with production-like block timing and fail-closed shell semantics;
 - subnet registration: PASS — netuid 2;
 - subnet activation: PASS;
@@ -27,26 +27,34 @@ Strict fresh-chain evidence from GitHub Actions localnet run 32755633843:
 - miner burned/collateral registration: PASS — MEV-shielded, UID 2;
 - post-registration metagraph assertion: PASS;
 - authenticated miner HTTP process startup: PASS;
-- non-loopback advertised runner endpoint: PASS — `10.1.0.171:8091` in that ephemeral run;
-- `ServeAxon`: PASS — `AxonServed` event, extrinsic `18-0006`;
-- metagraph discovery: PASS — miner UID 2 discovered at the chain-published endpoint;
-- signed validator → miner BMP round trip: PASS — challenge `localnet-auth-roundtrip-001`, BMP schema `bmp/0.1`, one rule returned;
-- SetWeights execute/read-back: FAILED before submission because the SDK's `subnet_hyperparameters()` returned a mapping while Consequent expected attribute-style fields.
+- non-loopback advertised runner endpoint: PASS;
+- `ServeAxon`: PASS — `AxonServed` observed;
+- metagraph discovery: PASS — miner discovered from chain-published endpoint;
+- signed validator → miner BMP round trip: PASS — challenge `localnet-auth-roundtrip-001`, BMP schema `bmp/0.1`;
+- SetWeights execute/read-back: NOT YET PASS.
 
-SetWeights defect correction:
-- `validator.chain_state.read_weight_policy()` now accepts both mapping and object/model SDK result forms and fails loudly when a required field is missing;
-- a mapping-shape regression test was added using the exact localnet hyperparameter form that exposed the defect;
-- this correction is committed, but the strict localnet SetWeights execute/read-back rerun has not yet produced pass evidence.
+SetWeights findings and corrections:
+1. `subnet_hyperparameters()` returns a mapping on the local v11 path. `read_weight_policy()` now supports both mapping and object/model forms, with a regression test.
+2. New subnets default to commit-reveal. For deterministic M0 read-back only, the disposable subnet owner disables `commit_reveal_weights_enabled`; commit-reveal compatibility remains a later production/testnet gate.
+3. `weights_rate_limit` is runtime-owned and is not owner-settable in Bittensor 11. An attempted owner mutation was correctly rejected before chain submission.
+4. Consequent now models the live rate-limit rule explicitly with `remaining_weight_rate_limit_blocks()` and unit tests.
+5. `scripts/localnet_weights.py` now reads the validator UID's live `last_update`, compares it with the current metagraph block and live `weights_rate_limit`, waits until submission is legal, then calls `bt.SetWeights` and performs bounded chain read-back.
+6. The strict workflow no longer attempts to mutate `weights_rate_limit`; it requires a positive live value and exercises compliance with that value.
+
+Current authoritative rerun:
+- localnet run `32770361036` / run #33 on head `c6516218b14252e94fd976b796a2c72b4cc9ac74`;
+- CI run #104: PASS;
+- strict localnet #33: IN_PROGRESS at last check.
 
 Important evidence boundary:
 - chain-local subnet + neuron lifecycle: `CHAIN_LOCAL_PASS`;
 - chain-local ServeAxon + metagraph discovery: `CHAIN_LOCAL_PASS`;
 - chain-local signed BMP round trip: `CHAIN_LOCAL_PASS`;
 - six-miner network: only `LOCAL_NETWORK_COMPONENT_PASS` until six independent chain-registered miners are exercised together;
-- chain-local SetWeights execution/read-back: `PATCHED_AWAITING_RERUN`;
+- chain-local SetWeights execution/read-back: `RATE_LIMIT_AWARE_RERUN_IN_PROGRESS`;
 - testnet neuron/ServeAxon/weight evidence: NOT_RUN;
 - submission evidence: NOT_RUN.
 
-Next canonical gate: rerun the strict fresh-chain lifecycle through `SetWeights` execution and chain read-back. If that passes, M0 is closed. Then promote to a six-chain-registered-miner competitive local subnet before any funded Bittensor `test` mutation.
+Next canonical gate: the strict fresh-chain run must produce a successful `SetWeights` extrinsic and observable target weight after respecting the live 100-block rate limit. If that passes, M0 is closed. Then promote to a six-chain-registered-miner competitive local subnet before any funded Bittensor `test` mutation.
 
 No local, chain-local, CI, or read-only testnet result may be presented as deployed testnet evidence.
