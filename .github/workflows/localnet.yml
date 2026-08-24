@@ -201,6 +201,30 @@ jobs:
           set -euo pipefail
           python scripts/localnet_roundtrip.py | tee /tmp/localnet-roundtrip.json
 
+      - name: Configure deterministic M0 weight visibility
+        run: |
+          set -euo pipefail
+          # New subnets default to commit-reveal. With tempo=360 and real block
+          # timing, a valid timelocked SetWeights commit is intentionally hidden
+          # for roughly one epoch. M0 needs deterministic execute + chain read-back,
+          # so the disposable subnet owner disables commit-reveal for this one proof.
+          # Commit-reveal compatibility remains a separate M1/testnet gate.
+          btcli tx set-hyperparameter \
+            --netuid 2 \
+            --name commit_reveal_weights_enabled \
+            --value false \
+            -w consequent-owner -H default \
+            --network local -y
+          sleep 13
+          btcli query subnet-hyperparameters --netuid 2 --network local --json | tee /tmp/consequent-weight-hyperparameters.json
+          python - <<'PY'
+          import json
+          with open('/tmp/consequent-weight-hyperparameters.json', encoding='utf-8') as handle:
+              hp = json.load(handle)
+          if bool(hp['commit_reveal_weights_enabled']):
+              raise SystemExit('commit-reveal remained enabled in deterministic M0 weight fixture')
+          PY
+
       - name: Execute and read back localnet SetWeights
         run: |
           set -euo pipefail
@@ -227,6 +251,7 @@ jobs:
             /tmp/advertised-ip.txt
             /tmp/consequent-metagraph-before.json
             /tmp/consequent-metagraph-after.json
+            /tmp/consequent-weight-hyperparameters.json
             /tmp/serve-axon.txt
             /tmp/chain-probe.json
             /tmp/localnet-roundtrip.json
@@ -241,6 +266,7 @@ jobs:
           cat /tmp/serve-axon.txt 2>/dev/null || true
           cat /tmp/chain-probe.json 2>/dev/null || true
           cat /tmp/localnet-roundtrip.json 2>/dev/null || true
+          cat /tmp/consequent-weight-hyperparameters.json 2>/dev/null || true
           cat /tmp/localnet-weights.json 2>/dev/null || true
           cat /tmp/consequent-miner.log 2>/dev/null || true
           docker logs consequent-local-chain 2>/dev/null || true
