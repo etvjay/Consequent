@@ -16,17 +16,27 @@ M0.2 serve/discover primitives: IMPLEMENTED_CI_PASS — `bt.ServeAxon` plan/exec
 M0.3 authenticated local network: LOCAL_NETWORK_PASS — real Bittensor hotkeys/keypairs sign and verify btauth/1 requests; replay and body tampering are rejected; unsigned network requests fail closed; a signed POST passes through the FastAPI miner endpoint and metagraph validator policy.
 M0.4 six-miner pressure network: LOCAL_NETWORK_PASS — CI spawns six independent Uvicorn miner processes, queries them over sockets through the validator HTTP client, scores concealed holdouts, hard-vetoes the policy-violating miner, and normalizes weights with the useful generalizer ranked highest.
 Bittensor v11 contract tests: CI_PASS — `Subtensor`, `ServeAxon`, `SetWeights`, and `http_auth` symbols/intents verified against installed 11.1.0.
-Expanded CI suite: 19/19 PASS on Python 3.10 and 3.12 (GitHub Actions run 32753997338).
+Expanded established CI suite: 19/19 PASS on Python 3.10 and 3.12 (GitHub Actions run 32753997338).
+
+External network read evidence: `READ_ONLY_TESTNET_PASS` — GitHub Actions run 32754327208 connected to Bittensor network `test` with `bittensor==11.1.0` and read block 7,854,063. This proves connectivity/read compatibility only; it is not testnet subnet evidence.
+
+Chain-local harness correction:
+- A prior fresh-Subtensor workflow run was initially displayed green because failing commands were piped through `tee` without `pipefail`.
+- Log inspection proved validator neuron registration failed, so ServeAxon/discovery/round-trip also failed downstream.
+- That run is classified `FAILED_EVIDENCE_HARNESS`; it MUST NOT be cited as chain-local pass evidence.
+- The localnet workflow is now fail-closed with `set -euo pipefail`, explicit post-registration metagraph assertions, and required registered-validator + served-miner probe gates.
+- Current strict rerun uses production-like block timing and the CLI's required default MEV-shielded burned-registration path.
 
 Important evidence boundary:
-- `ServeAxon` helper exists and is CI-compatible, but actual chain publication: NOT_RUN;
-- metagraph discovery helper exists, but visibility of our own served neuron on chain: NOT_RUN;
-- multi-miner process network is local and does not represent registered testnet neurons;
+- actual successful chain-local Consequent neuron registration: NOT_YET_PROVEN by the strict harness;
+- actual successful chain-local ServeAxon publication: NOT_YET_PROVEN by the strict harness;
+- actual successful chain-local metagraph discovery/round trip: NOT_YET_PROVEN by the strict harness;
+- multi-miner process network is local HTTP/process evidence and does not represent registered testnet neurons;
 - live weight-policy read and SetWeights plan helpers exist, but an actual plan against our target subnet: NOT_RUN;
 - SetWeights execution: NOT_RUN;
-- testnet evidence: NOT_RUN;
+- testnet neuron/ServeAxon/weight evidence: NOT_RUN;
 - submission evidence: NOT_RUN.
 
-Next canonical gate: M0.5 + testnet readiness — document/register wallets and hotkeys, choose/record the testnet netuid/subnet path, plan ServeAxon and SetWeights against live testnet state, then execute only after explicit operator funding/registration prerequisites are satisfied.
+Next canonical gate: strict fresh-chain lifecycle PASS — register subnet → activate → register validator/miner → ServeAxon → metagraph discovery → signed round trip. Then add SetWeights plan/execute/read-back on that chain before crossing to funded Bittensor `test` state.
 
-No local or CI result may be presented as testnet evidence.
+No local, chain-local, CI, or read-only testnet result may be presented as deployed testnet evidence.
