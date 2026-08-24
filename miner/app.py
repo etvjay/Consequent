@@ -18,6 +18,14 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "service": "consequent-miner"}
 
 
+async def _load_metagraph(settings: NetworkSettings):
+    import bittensor as bt
+
+    assert settings.netuid is not None
+    async with bt.Subtensor(network=settings.network) as client:
+        return await client.subnets.metagraph(netuid=settings.netuid)
+
+
 async def _authenticate_network_request(request: Request, body: bytes, settings: NetworkSettings) -> None:
     if not settings.network_mode:
         return
@@ -44,12 +52,8 @@ async def _authenticate_network_request(request: Request, body: bytes, settings:
     if not caller_hotkey:
         raise HTTPException(status_code=401, detail="authenticated caller hotkey missing")
 
-    import bittensor as bt
-
-    assert settings.netuid is not None
     try:
-        async with bt.Subtensor(network=settings.network) as client:
-            metagraph = await client.subnets.metagraph(netuid=settings.netuid)
+        metagraph = await _load_metagraph(settings)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="unable to load Bittensor metagraph") from exc
 
