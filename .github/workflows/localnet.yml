@@ -83,9 +83,8 @@ jobs:
           # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
           btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
 
-          # Burned registration is MEV-shielded by current Bittensor. Run this
-          # lifecycle with 12-second blocks so the shielded inner extrinsic's
-          # mortal era is representative rather than compressed by fast-block mode.
+          # Current Bittensor requires burned registration to be MEV-shielded.
+          # Production-like block timing keeps the shielded transaction era realistic.
           btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local -y
           sleep 13
           btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local -y
@@ -121,6 +120,24 @@ jobs:
           asyncio.run(main())
           PY
 
+      - name: Resolve chain-valid miner endpoint
+        run: |
+          set -euo pipefail
+          ADVERTISED_IP="$(hostname -I | tr ' ' '\n' | grep -Ev '^(127\.|0\.0\.0\.0$|$)' | head -n 1)"
+          if [ -z "$ADVERTISED_IP" ]; then
+            echo 'could not resolve a non-loopback runner address' >&2
+            exit 1
+          fi
+          python - "$ADVERTISED_IP" <<'PY'
+          import ipaddress, sys
+          ip = ipaddress.ip_address(sys.argv[1])
+          if ip.is_loopback or ip.is_unspecified or ip.is_multicast:
+              raise SystemExit(f'invalid advertised IP for ServeAxon: {ip}')
+          print(f'chain candidate advertised IP: {ip}')
+          PY
+          echo "CONSEQUENT_ADVERTISED_IP=$ADVERTISED_IP" >> "$GITHUB_ENV"
+          printf 'advertised_ip=%s\n' "$ADVERTISED_IP" | tee /tmp/advertised-ip.txt
+
       - name: Start authenticated Consequent miner service
         env:
           CONSEQUENT_NETWORK_MODE: '1'
@@ -129,7 +146,6 @@ jobs:
           CONSEQUENT_WALLET: consequent-miner
           CONSEQUENT_HOTKEY: default
           CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
-          CONSEQUENT_ADVERTISED_IP: 127.0.0.1
           CONSEQUENT_ADVERTISED_PORT: '8091'
           CONSEQUENT_MINER_STRATEGY: useful_generalizing_memory
         run: |
@@ -138,6 +154,7 @@ jobs:
           echo $! >/tmp/consequent-miner.pid
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8091/health >/dev/null; then
+              curl -fsS "http://${CONSEQUENT_ADVERTISED_IP}:8091/health" >/dev/null
               exit 0
             fi
             sleep 1
@@ -152,7 +169,6 @@ jobs:
           CONSEQUENT_NETUID: '2'
           CONSEQUENT_WALLET: consequent-miner
           CONSEQUENT_HOTKEY: default
-          CONSEQUENT_ADVERTISED_IP: 127.0.0.1
           CONSEQUENT_ADVERTISED_PORT: '8091'
           CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
         run: |
@@ -194,6 +210,7 @@ jobs:
           path: |
             /tmp/root-metagraph.json
             /tmp/neuron-registration.json
+            /tmp/advertised-ip.txt
             /tmp/consequent-metagraph-before.json
             /tmp/consequent-metagraph-after.json
             /tmp/serve-axon.txt
@@ -205,6 +222,7 @@ jobs:
         if: failure()
         run: |
           cat /tmp/neuron-registration.json 2>/dev/null || true
+          cat /tmp/advertised-ip.txt 2>/dev/null || true
           cat /tmp/serve-axon.txt 2>/dev/null || true
           cat /tmp/chain-probe.json 2>/dev/null || true
           cat /tmp/localnet-roundtrip.json 2>/dev/null || true
