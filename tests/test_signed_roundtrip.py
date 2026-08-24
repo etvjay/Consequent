@@ -7,18 +7,15 @@ def test_btauth_real_keypair_roundtrip_and_replay_rejection():
     import bittensor as bt
     from bittensor.keyfiles import Keypair
 
-    class WalletLike:
-        def __init__(self, hotkey):
-            self.hotkey = hotkey
-
     sender = Keypair.create_from_uri("//Alice")
     receiver = Keypair.create_from_uri("//Bob")
-    wallet = WalletLike(sender)
     body = b'{"prompt":"consequent"}'
     path = "/v1/memory/formation"
 
+    # Bittensor 11.1 accepts a raw Keypair as a Signer. Keep this test on the
+    # SDK's real signer seam rather than wrapping the key in a fake wallet.
     headers = bt.http_auth.sign(
-        wallet,
+        sender,
         method="POST",
         path=path,
         body=body,
@@ -47,15 +44,11 @@ def test_btauth_rejects_body_tampering():
     import bittensor as bt
     from bittensor.keyfiles import Keypair
 
-    class WalletLike:
-        def __init__(self, hotkey):
-            self.hotkey = hotkey
-
     sender = Keypair.create_from_uri("//Alice")
     receiver = Keypair.create_from_uri("//Bob")
     path = "/v1/memory/formation"
     headers = bt.http_auth.sign(
-        WalletLike(sender),
+        sender,
         method="POST",
         path=path,
         body=b"original",
