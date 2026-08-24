@@ -24,6 +24,7 @@ class NetworkSettings:
     netuid: int | None = None
     wallet_name: str | None = None
     hotkey_name: str | None = None
+    wallet_path: str | None = None
     network_mode: bool = False
     advertised_ip: str | None = None
     advertised_port: int = 8091
@@ -38,6 +39,7 @@ class NetworkSettings:
             netuid=int(raw_netuid) if raw_netuid is not None else None,
             wallet_name=os.getenv("CONSEQUENT_WALLET"),
             hotkey_name=os.getenv("CONSEQUENT_HOTKEY"),
+            wallet_path=os.getenv("CONSEQUENT_WALLET_PATH"),
             network_mode=_env_bool("CONSEQUENT_NETWORK_MODE", False),
             advertised_ip=os.getenv("CONSEQUENT_ADVERTISED_IP"),
             advertised_port=int(os.getenv("CONSEQUENT_ADVERTISED_PORT", "8091")),
@@ -68,7 +70,10 @@ class NetworkSettings:
             raise RuntimeError("wallet and hotkey names are required")
         import bittensor as bt
 
-        return bt.Wallet(name=self.wallet_name, hotkey=self.hotkey_name)
+        kwargs = {"name": self.wallet_name, "hotkey": self.hotkey_name}
+        if self.wallet_path:
+            kwargs["path"] = self.wallet_path
+        return bt.Wallet(**kwargs)
 
 
 @dataclass(frozen=True)
