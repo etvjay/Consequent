@@ -1,6 +1,6 @@
 # EBI Status — Consequent
 
-**Current:** `LOCAL_NETWORK_PASS`
+**Current:** `CHAIN_LOCAL_REGISTRATION_PASS / LOCAL_NETWORK_COMPONENT_PASS`
 
 Canonical build authority:
 1. `/GROUND_TRUTH.md`
@@ -13,30 +13,34 @@ Toolchain evidence: CI_PASS — `bittensor==11.1.0` installs and the Consequent 
 
 M0.1 identity/chain-state primitives: IMPLEMENTED_CI_PASS — explicit network settings, wallet/hotkey/netuid configuration, metagraph reads, neuron lookup, live weight-policy reads.
 M0.2 serve/discover primitives: IMPLEMENTED_CI_PASS — `bt.ServeAxon` plan/execute helpers and metagraph-driven miner discovery.
-M0.3 authenticated local network: LOCAL_NETWORK_PASS — real Bittensor hotkeys/keypairs sign and verify btauth/1 requests; replay and body tampering are rejected; unsigned network requests fail closed; a signed POST passes through the FastAPI miner endpoint and metagraph validator policy.
-M0.4 six-miner pressure network: LOCAL_NETWORK_PASS — CI spawns six independent Uvicorn miner processes, queries them over sockets through the validator HTTP client, scores concealed holdouts, hard-vetoes the policy-violating miner, and normalizes weights with the useful generalizer ranked highest.
+M0.3 authenticated HTTP component: LOCAL_NETWORK_COMPONENT_PASS — real Bittensor hotkeys/keypairs sign and verify btauth/1 requests; replay and body tampering are rejected; unsigned network requests fail closed; a signed POST passes through the FastAPI miner endpoint and metagraph validator policy in the component harness.
+M0.4 six-miner HTTP pressure component: LOCAL_NETWORK_COMPONENT_PASS — CI spawns six independent Uvicorn miner processes, queries them over sockets through the validator HTTP client, scores concealed holdouts, hard-vetoes the policy-violating miner, and normalizes weights with the useful generalizer ranked highest. These processes are not chain-registered in this component test.
 Bittensor v11 contract tests: CI_PASS — `Subtensor`, `ServeAxon`, `SetWeights`, and `http_auth` symbols/intents verified against installed 11.1.0.
-Expanded established CI suite: 19/19 PASS on Python 3.10 and 3.12 (GitHub Actions run 32753997338).
 
-External network read evidence: `READ_ONLY_TESTNET_PASS` — GitHub Actions run 32754327208 connected to Bittensor network `test` with `bittensor==11.1.0` and read block 7,854,063. This proves connectivity/read compatibility only; it is not testnet subnet evidence.
+External network read evidence: `READ_ONLY_TESTNET_PASS` — CI connects to Bittensor network `test` and reads live chain state. This proves connectivity/read compatibility only; it is not testnet subnet evidence.
 
-Chain-local harness correction:
-- A prior fresh-Subtensor workflow run was initially displayed green because failing commands were piped through `tee` without `pipefail`.
-- Log inspection proved validator neuron registration failed, so ServeAxon/discovery/round-trip also failed downstream.
-- That run is classified `FAILED_EVIDENCE_HARNESS`; it MUST NOT be cited as chain-local pass evidence.
-- The localnet workflow is now fail-closed with `set -euo pipefail`, explicit post-registration metagraph assertions, and required registered-validator + served-miner probe gates.
-- Current strict rerun uses production-like block timing and the CLI's required default MEV-shielded burned-registration path.
+Strict fresh-chain evidence:
+- GitHub Actions localnet run 32754995956 used the official Subtensor localnet container with production-like block timing and fail-closed shell semantics.
+- subnet registration: PASS — netuid 2 registered at block 10;
+- subnet activation: PASS — activation extrinsic succeeded;
+- validator burned/collateral registration: PASS — MEV-shielded, UID 1;
+- miner burned/collateral registration: PASS — MEV-shielded, UID 2;
+- post-registration metagraph assertion: PASS — both hotkeys present and `num_uids=3` including owner;
+- authenticated miner HTTP process startup: PASS;
+- ServeAxon in that run: FAILED because loopback `127.0.0.1` is invalid chain-advertised IP;
+- downstream chain-local discovery/round-trip: NOT_RUN in that failed run.
+
+The current strict workflow now resolves and advertises a non-loopback runner interface while Uvicorn remains bound to `0.0.0.0`. A new run is testing that correction.
 
 Important evidence boundary:
-- actual successful chain-local Consequent neuron registration: NOT_YET_PROVEN by the strict harness;
-- actual successful chain-local ServeAxon publication: NOT_YET_PROVEN by the strict harness;
-- actual successful chain-local metagraph discovery/round trip: NOT_YET_PROVEN by the strict harness;
+- actual successful chain-local Consequent neuron registration: `CHAIN_LOCAL_REGISTRATION_PASS`;
+- actual successful chain-local ServeAxon publication: NOT_YET_PROVEN;
+- actual successful chain-local metagraph endpoint discovery/round trip: NOT_YET_PROVEN;
 - multi-miner process network is local HTTP/process evidence and does not represent registered testnet neurons;
-- live weight-policy read and SetWeights plan helpers exist, but an actual plan against our target subnet: NOT_RUN;
-- SetWeights execution: NOT_RUN;
+- live weight-policy helpers and SetWeights plan/submit code exist; strict chain-local execute/read-back probe is being added but has not passed yet;
 - testnet neuron/ServeAxon/weight evidence: NOT_RUN;
 - submission evidence: NOT_RUN.
 
-Next canonical gate: strict fresh-chain lifecycle PASS — register subnet → activate → register validator/miner → ServeAxon → metagraph discovery → signed round trip. Then add SetWeights plan/execute/read-back on that chain before crossing to funded Bittensor `test` state.
+Next canonical gate: strict fresh-chain serving lifecycle PASS — ServeAxon → metagraph endpoint discovery → signed round trip. Then execute/read back SetWeights on the same fresh local chain before crossing to funded Bittensor `test` state.
 
 No local, chain-local, CI, or read-only testnet result may be presented as deployed testnet evidence.
