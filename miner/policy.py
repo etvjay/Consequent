@@ -14,8 +14,8 @@ class CallerDecision:
 
 
 def _tao_stake(neuron: Any) -> float:
-    """Best-effort conversion of Bittensor stake wrappers to a TAO float."""
-    stake = getattr(neuron, "stake", 0.0)
+    """Convert the Bittensor v11 MetagraphNeuron.tao_stake Balance to TAO."""
+    stake = getattr(neuron, "tao_stake", 0.0)
     if hasattr(stake, "tao"):
         return float(stake.tao)
     try:
@@ -41,7 +41,7 @@ def authorize_caller(*, caller_hotkey: str, metagraph: Any, settings: NetworkSet
         if stake < settings.min_validator_tao_stake:
             return CallerDecision(
                 False,
-                f"caller stake {stake} is below required {settings.min_validator_tao_stake}",
+                f"caller TAO stake {stake} is below required {settings.min_validator_tao_stake}",
                 uid=int(neuron.uid),
             )
 
