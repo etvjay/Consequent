@@ -204,20 +204,13 @@ jobs:
       - name: Configure deterministic M0 weight visibility
         run: |
           set -euo pipefail
-          # New subnets default to commit-reveal and a 100-block weight rate limit.
-          # M0 needs a deterministic execute + immediate chain read-back proof, so
-          # this disposable subnet disables commit-reveal and sets the rate limit
-          # to zero. Production/testnet must respect whatever live values it reads.
+          # New subnets default to commit-reveal. M0 disables only that owner-
+          # settable visibility delay so SetWeights can be read back deterministically.
+          # The runtime-owned weights_rate_limit remains unchanged and must be obeyed.
           btcli tx set-hyperparameter \
             --netuid 2 \
             --name commit_reveal_weights_enabled \
             --value false \
-            -w consequent-owner -H default \
-            --network local -y
-          btcli tx set-hyperparameter \
-            --netuid 2 \
-            --name weights_rate_limit \
-            --value 0 \
             -w consequent-owner -H default \
             --network local -y
           sleep 13
@@ -228,8 +221,8 @@ jobs:
               hp = json.load(handle)
           if bool(hp['commit_reveal_weights_enabled']):
               raise SystemExit('commit-reveal remained enabled in deterministic M0 weight fixture')
-          if int(hp['weights_rate_limit']) != 0:
-              raise SystemExit('weights_rate_limit remained nonzero in deterministic M0 weight fixture')
+          if int(hp['weights_rate_limit']) <= 0:
+              raise SystemExit('expected a positive live weights_rate_limit to exercise runtime compliance')
           PY
 
       - name: Execute and read back localnet SetWeights
@@ -244,6 +237,7 @@ jobs:
             --network local --netuid 2 \
             --wallet consequent-owner --hotkey default \
             --target-hotkey "$MINER_HOTKEY" \
+            --max-wait-blocks 120 \
             | tee /tmp/localnet-weights.json
 
       - name: Upload localnet evidence
