@@ -67,8 +67,13 @@ def admit_patch(
     """Apply non-semantic protocol admission before any causal scoring.
 
     Admission is deliberately conservative. It checks whether the miner returned
-    a bounded, provenance-linked, declarative BMP. It does *not* judge whether
-    the memory is useful; that remains the concealed paired evaluator's job.
+    a bounded, source-grounded, declarative BMP. It does *not* judge whether the
+    memory is useful; that remains the concealed paired evaluator's job.
+
+    Source grounding is literal in bmp/0.1: every rule condition key/value must
+    appear in at least one same-family episode explicitly cited by that rule.
+    Miners may drop volatile source fields to generalize, but may not introduce
+    hidden-instance conditions or facts absent from their cited experience.
     """
     reasons: list[str] = []
     digest = semantic_patch_digest(patch)
@@ -98,6 +103,8 @@ def admit_patch(
 
         if not rule.provenance:
             reasons.append(f"missing_provenance:{rule.rule_id}")
+
+        grounded_sources = []
         for source_id in rule.provenance:
             source = episode_by_id.get(source_id)
             if source is None:
@@ -105,6 +112,8 @@ def admit_patch(
                 continue
             if source.family != rule.family:
                 reasons.append(f"provenance_family_mismatch:{rule.rule_id}:{source_id}")
+                continue
+            grounded_sources.append(source)
 
         for key, value in rule.conditions.items():
             if not isinstance(key, str) or not _CONDITION_KEY.fullmatch(key):
@@ -112,9 +121,13 @@ def admit_patch(
                 continue
             if not _safe_condition_value(value):
                 reasons.append(f"unsafe_condition_value:{rule.rule_id}:{key}")
+                continue
+            if grounded_sources and not any(
+                key in source.features and source.features[key] == value
+                for source in grounded_sources
+            ):
+                reasons.append(f"condition_not_grounded_in_provenance:{rule.rule_id}:{key}")
 
-    # Stable order makes evidence comparison deterministic while preserving the
-    # first occurrence of each finding.
     ordered_reasons = tuple(dict.fromkeys(reasons))
     return AdmissionResult(
         accepted=not ordered_reasons,

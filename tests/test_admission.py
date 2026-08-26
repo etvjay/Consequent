@@ -53,6 +53,22 @@ def test_cross_family_provenance_is_rejected():
     assert any(reason.startswith("provenance_family_mismatch:") for reason in result.reasons)
 
 
+def test_unseen_condition_value_cannot_be_laundered_through_valid_provenance():
+    challenge = m0_challenge()
+    patch = BehavioralMemoryPatch(
+        miner_strategy="leaked-holdout",
+        rules=[
+            _rule(
+                conditions={"endpoint": "/private/validator-secret"},
+                provenance=["src-api-auth-expired"],
+            )
+        ],
+    )
+    result = admit_patch(challenge, patch)
+    assert result.accepted is False
+    assert "condition_not_grounded_in_provenance:r1:endpoint" in result.reasons
+
+
 def test_capability_smuggling_action_is_rejected():
     challenge = m0_challenge()
     patch = BehavioralMemoryPatch(
