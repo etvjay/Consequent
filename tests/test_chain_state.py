@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pytest
 
 from validator.chain_state import (
+    read_consensus_policy,
     read_weight_policy,
     remaining_weight_rate_limit_blocks,
     required_version_key,
@@ -19,6 +20,14 @@ class FakeHyperparams:
     weights_rate_limit: int = 100
     commit_reveal_weights_enabled: bool = True
     commit_reveal_period: int = 1
+    tempo: int = 360
+    kappa: int = 32767
+    max_validators: int = 128
+    activity_cutoff_factor: int = 13889
+    bonds_moving_avg: int = 900000
+    bonds_penalty: int = 65535
+    yuma3_enabled: bool = False
+    liquid_alpha_enabled: bool = False
 
 
 class FakeSubnets:
@@ -41,6 +50,14 @@ class FakeMappingSubnets:
             "weights_rate_limit": 100,
             "commit_reveal_weights_enabled": True,
             "commit_reveal_period": 1,
+            "tempo": 360,
+            "kappa": 32767,
+            "max_validators": 64,
+            "activity_cutoff_factor": 13889,
+            "bonds_moving_avg": 900000,
+            "bonds_penalty": 32768,
+            "yuma_version": 3,
+            "liquid_alpha_enabled": True,
         }
 
 
@@ -68,6 +85,32 @@ async def test_read_weight_policy_accepts_bittensor_mapping_shape():
     assert policy.weights_rate_limit == 100
     assert policy.commit_reveal_weights_enabled is True
     assert policy.commit_reveal_period == 1
+
+
+@pytest.mark.asyncio
+async def test_read_consensus_policy_captures_yuma_environment():
+    policy = await read_consensus_policy(client=FakeClient(), netuid=42)
+    assert policy.tempo == 360
+    assert policy.kappa_raw == 32767
+    assert policy.kappa == pytest.approx(32767 / 65535)
+    assert policy.max_validators == 128
+    assert policy.activity_cutoff_factor == 13889
+    assert policy.effective_activity_cutoff_blocks == 5000
+    assert policy.bonds_moving_avg == 900000
+    assert policy.bonds_penalty_raw == 65535
+    assert policy.bonds_penalty == pytest.approx(1.0)
+    assert policy.yuma_version == 2
+    assert policy.liquid_alpha_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_read_consensus_policy_accepts_v3_mapping_shape():
+    policy = await read_consensus_policy(client=FakeMappingClient(), netuid=42)
+    assert policy.max_validators == 64
+    assert policy.effective_activity_cutoff_blocks == 5000
+    assert policy.bonds_penalty == pytest.approx(32768 / 65535)
+    assert policy.yuma_version == 3
+    assert policy.liquid_alpha_enabled is True
 
 
 def test_remaining_weight_rate_limit_blocks_tracks_runtime_rule():
