@@ -23,24 +23,26 @@ M2 exit condition: no unresolved `CRITICAL` finding and no unbounded `HIGH` find
 
 | ID | Attack | Severity | Current control | Evidence | State |
 |---|---|---:|---|---|---|
-| M2-01 | forged source provenance | CRITICAL | validator admission requires every provenance ID to exist in supplied source episodes and match rule family | `tests/test_admission.py`, `tests/test_adversarial_runner.py` | `CI_AWAITING` |
-| M2-02 | capability/executable smuggling | CRITICAL | BMP actions restricted to bounded declarative tokens; multiline/control payloads rejected before scoring | `tests/test_admission.py` | `CI_AWAITING` |
-| M2-03 | patch-budget / oversized payload abuse | HIGH | request memory budget + serialized-byte ceiling + bounded schema | `tests/test_admission.py` | `CI_AWAITING` |
-| M2-04 | replayed response / wrong challenge binding | HIGH | response challenge ID must exactly match active challenge before admission/scoring | `tests/test_adversarial_runner.py` | `CI_AWAITING` |
-| M2-05 | copied semantic response | HIGH | canonical semantic BMP digest; duplicates surfaced as audit signal, not novelty penalty | `tests/test_admission.py`, `tests/test_adversarial_runner.py` | `CI_AWAITING` |
-| M2-06 | benchmark/holdout leakage | CRITICAL | source request excludes concealed holdouts; procedural/private-seed design | existing architecture + new pressure test required | `PARTIAL` |
-| M2-07 | source-instance memorization | HIGH | shifted concealed holdouts; useful generalizer must beat source-bound overfit | M1 chain competition | `CHAIN_LOCAL_PASS` |
+| M2-01 | forged source provenance | CRITICAL | validator admission requires every provenance ID to exist in supplied source episodes and match rule family | `tests/test_admission.py`, `tests/test_adversarial_runner.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-02 | capability/executable smuggling | CRITICAL | BMP actions restricted to bounded declarative tokens; multiline/control payloads rejected before scoring | `tests/test_admission.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-03 | patch-budget / oversized payload abuse | HIGH | request memory budget + serialized-byte ceiling + bounded schema | `tests/test_admission.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-04 | replayed response / wrong challenge binding | HIGH | response challenge ID must exactly match active challenge before admission/scoring | `tests/test_adversarial_runner.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-05 | copied semantic response | HIGH | canonical semantic BMP digest; duplicates surfaced as audit signal, not novelty penalty | `tests/test_admission.py`, `tests/test_adversarial_runner.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-06 | benchmark/holdout leakage | CRITICAL | active miner request serialization excludes concealed holdouts; procedural/private-seed generation remains separate | holdout-secrecy regression test + architecture | `LOCAL_DESIGN_PASS / MULTI_VALIDATOR_CHAIN_NOT_RUN` |
+| M2-07 | source-instance memorization | HIGH | shifted concealed holdouts; useful generalizer must beat source-bound overfit | M1 chain competition + seeded validator-dispersion harness | `CHAIN_LOCAL_PASS / SEEDED_LOCAL_PASS_PENDING_CI` |
 | M2-08 | catastrophic regression hidden by mean uplift | CRITICAL | explicit regression rate penalty | golden/M1 controlled evaluator | `LOCAL_PASS` |
 | M2-09 | policy violation compensated by uplift | CRITICAL | any policy violation hard-vetoes score | golden + M1 chain competition | `CHAIN_LOCAL_PASS` |
-| M2-10 | sudden score gaming | HIGH | score-jump signal escalates deep evaluation | `validator/audit_policy.py`, tests | `CI_AWAITING` |
-| M2-11 | repeated downtime / stale winner | HIGH | failures and stale evidence trigger deep requalification | `validator/audit_policy.py`, tests | `CI_AWAITING / REWARD_DECAY_NOT_IMPLEMENTED` |
+| M2-10 | sudden score gaming | HIGH | score-jump signal escalates deep evaluation | `validator/audit_policy.py`, tests | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-11 | repeated downtime / stale winner | HIGH | rolling score state zeroes economically eligible score after bounded consecutive failures or staleness | `validator/score_state.py`, `tests/test_score_state.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
 | M2-12 | miner churn / endpoint changes | MEDIUM | metagraph-based discovery; persistent churn pressure not yet exercised | M1 discovery only | `PARTIAL` |
-| M2-13 | miner-validator collusion | CRITICAL | independent challenges/validators proposed; no multi-validator evidence yet | mechanism design only | `OPEN` |
-| M2-14 | validator copying/collusion | HIGH | independent seeds/evidence digests proposed; no dispersion harness yet | mechanism design only | `OPEN` |
-| M2-15 | evaluator-version drift | HIGH | evaluator version in challenge; migration/reset policy not implemented | schema only | `OPEN` |
-| M2-16 | seed variance / lucky miner | HIGH | uncertainty discount exists; broad procedural multi-seed network test pending | local golden robustness only | `PARTIAL` |
-| M2-17 | duplicate rule IDs / ambiguous semantics | MEDIUM | duplicate rule IDs rejected | `tests/test_admission.py` | `CI_AWAITING` |
-| M2-18 | forged novelty / self-label manipulation | MEDIUM | semantic digest excludes miner self-label; novelty is not rewarded | `tests/test_admission.py` | `CI_AWAITING` |
+| M2-13 | miner-validator collusion | CRITICAL | independent validators/private seeds + Yuma consensus boundary modeled; real multi-validator chain evidence absent | `tests/test_multivalidator_consensus.py`, `consequent/yuma_reference.py` | `REFERENCE_MODEL_PASS_PENDING_CI / CHAIN_NOT_RUN` |
+| M2-14 | validator copying/collusion | HIGH | independent seed requirement, semantic/timing evidence, Yuma clipping reference model, validator-dispersion harness | `tests/test_multivalidator_consensus.py`, `tests/test_validator_dispersion.py` | `REFERENCE_MODEL_PASS_PENDING_CI / CHAIN_NOT_RUN` |
+| M2-15 | evaluator-version drift | HIGH | old evaluator scores are immediately economically ineligible; first score under new evaluator resets EMA/history | `validator/score_state.py`, `tests/test_score_state.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-16 | seed variance / lucky miner | HIGH | uncertainty discount + 100-private-seed dispersion gate; useful generalizer must remain top and above overfit across all seeds | `consequent/validator_dispersion.py`, `tests/test_validator_dispersion.py`, `scripts/validator_dispersion.py` | `SEEDED_LOCAL_PASS_PENDING_CI` |
+| M2-17 | duplicate rule IDs / ambiguous semantics | MEDIUM | duplicate rule IDs rejected | `tests/test_admission.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-18 | forged novelty / self-label manipulation | MEDIUM | semantic digest excludes miner self-label; novelty is not rewarded | `tests/test_admission.py` | `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_PENDING` |
+| M2-19 | malicious validator minority overweights unsafe miner | CRITICAL | Yuma reference clipping at stake-supported consensus threshold prevents unsupported weight from becoming miner incentive | `tests/test_yuma_reference.py`, `tests/test_multivalidator_consensus.py`, `scripts/yuma_pressure.py` | `REFERENCE_MODEL_PASS_PENDING_CI / CHAIN_NOT_RUN` |
+| M2-20 | malicious validator stake crosses consensus threshold | CRITICAL | no local mitigation claimed; explicit economic-security boundary. Requires stake/governance assumptions and chain evidence. | `tests/test_multivalidator_consensus.py`, `scripts/yuma_pressure.py` | `KNOWN_SYSTEM_BOUNDARY` |
 
 ---
 
@@ -57,6 +59,7 @@ signed response
 → semantic digest + duplicate telemetry
 → concealed causal evaluation
 → veto/regression/uncertainty score
+→ rolling eligibility/freshness
 → weight construction
 ```
 
@@ -86,17 +89,37 @@ Suspicion changes evaluation depth, not guilt. Current triggers include:
 - stale evaluation evidence;
 - new-miner exploration.
 
-The next step is to feed these triggers into an adaptive Stage B/Stage C evaluation scheduler.
+Adaptive Stage-C selection provides a private-seed random-audit floor in addition to explicit triggers.
+
+### Evaluator epoch boundary
+
+Scores are evaluator-version scoped. When the validator's evaluator version changes:
+
+```text
+old rolling score → economically ineligible
+new successful evaluation → new EMA epoch, sample_count = 1
+```
+
+A miner cannot inherit historical economic credit across a changed evaluator truth function.
+
+### Multi-validator / Yuma boundary
+
+Consequent now separates two claims:
+
+1. independent validators should derive non-identical rows from private evidence while converging statistically on behavioral quality;
+2. Bittensor/Yuma decides which stake-supported opinions become economic consensus.
+
+The local Yuma helper is a reference model only. It is used to falsify Consequent's evaluator-to-weight mechanism before expensive chain experiments. Subtensor remains authoritative economic evidence.
 
 ---
 
-## Next pressure tranche
+## Current next pressure tranche
 
-1. prove active challenge serialization contains no concealed holdout fields/data;
-2. implement rolling miner state with freshness/requalification and bounded downtime decay;
-3. implement adaptive deep-evaluation selection from audit signals;
-4. run copied-response miners across multiple private seeds and prove copying source-bound output does not create durable uplift;
-5. add two-validator independent-seed simulation and rank-dispersion evidence;
-6. add explicit evaluator-version migration/reset test;
-7. run M1 topology under miner disappearance/restart and endpoint churn;
-8. then decide whether M2 is strong enough for consumer integration/public-testnet preparation.
+1. pass current-head CI, M0 regression and M1 six-miner regression with all M2/Yuma changes;
+2. run/report the 100-private-seed validator-dispersion harness and retain evidence;
+3. sweep malicious validator stake around the live/reference `kappa` threshold and record the boundary where unsafe consensus becomes possible;
+4. run M1 topology under miner disappearance/restart and endpoint churn;
+5. build an actual chain-local multi-validator harness using independently registered hotkeys and private challenge seeds;
+6. prove validator permit/activity semantics rather than relying on owner-validator special status;
+7. prove commit-reveal enabled settlement rather than disabling it for immediate read-back;
+8. only then decide whether M2 is strong enough for consumer integration/public-testnet preparation.
