@@ -1,6 +1,6 @@
 # EBI Status — Consequent
 
-**Current:** `M0_CLOSED / CHAIN_LOCAL_ECONOMIC_LOOP_PASS`
+**Current:** `M1_CLOSED / CHAIN_LOCAL_COMPETITIVE_ECONOMIC_LOOP_PASS / M2_ACTIVE`
 
 Canonical build authority:
 1. `/GROUND_TRUTH.md`
@@ -15,68 +15,88 @@ Toolchain evidence: CI_PASS — `bittensor==11.1.0` installs and the Consequent 
 
 ## M0 closure
 
-Authoritative run: GitHub Actions localnet run `32770499057` / run #34 on head `d028172571baf2c3b776460069e617dc9b92b7f6`.
+Authoritative M0 run: GitHub Actions localnet run `32770499057` / run #34.
 
-The strict fresh-chain job completed successfully end-to-end:
-- fresh official Subtensor localnet with production-like block timing: PASS;
-- disposable owner/validator/miner wallets funded: PASS;
-- subnet registration and activation: PASS — netuid 2;
-- validator burned/collateral registration: PASS — UID 1;
-- miner burned/collateral registration: PASS — UID 2;
-- metagraph registration assertions: PASS;
-- authenticated miner HTTP process: PASS;
-- non-loopback chain-valid endpoint: PASS;
-- `bt.ServeAxon`: PASS — `AxonServed`, extrinsic `18-0006`;
-- validator metagraph discovery: PASS — miner UID 2 discovered from chain-published endpoint;
-- signed validator → miner btauth/1 BMP round trip: PASS — `LOCAL_NETWORK_AUTH_ROUNDTRIP_PASS`;
-- live weight-policy read: PASS;
-- runtime-owned `weights_rate_limit=100` respected: PASS — initial wait 87 blocks, legal submission block 110;
-- `bt.SetWeights`: PASS — extrinsic `111-0006`;
-- chain read-back: PASS — validator UID 0 → miner UID 2, target weight `1.0`;
-- evidence artifact upload: PASS — `consequent-localnet-evidence`.
+M0 proved one strict fresh-chain economic loop:
 
-Final SetWeights evidence state emitted by the runner: `LOCALNET_SET_WEIGHTS_READBACK_PASS`.
+`registration → ServeAxon → metagraph discovery → signed BMP formation → live rate-limit compliance → SetWeights → chain read-back`
 
-This closes M0. No component-only or simulated evidence is being used to make that claim; the closure is based on a strict fresh-chain lifecycle plus accepted economic settlement and read-back.
+Final state: `LOCALNET_SET_WEIGHTS_READBACK_PASS`.
 
-## Existing supporting evidence
+## M1 closure
 
-- mechanism/unit suite: CI_PASS;
-- real btauth cryptographic signing/verification + replay/tamper rejection: CI_PASS;
-- signed FastAPI request with metagraph-backed caller authorization: LOCAL_NETWORK_COMPONENT_PASS;
-- six independent Uvicorn miner processes over real sockets + concealed scoring/weights: LOCAL_NETWORK_COMPONENT_PASS;
-- Bittensor `test` network connectivity/read: READ_ONLY_TESTNET_PASS.
+Authoritative M1 run: GitHub Actions `m1-localnet` run `32906478860` / run #1 on head `42060c3f49ea0db5b6d7af41e4da39bb1db80936`.
+
+The fresh-chain competitive topology completed successfully:
+- fresh official Subtensor localnet: PASS;
+- subnet registration/activation: PASS — netuid 2;
+- owner/economic signer registered as UID 0;
+- six independent miner wallets/hotkeys funded and burned-registered: PASS — UIDs 1–6;
+- six independent authenticated FastAPI miner processes: PASS — ports 8091–8096;
+- six `ServeAxon` publications: PASS — chain extrinsics `43-0006`, `46-0006`, `49-0006`, `52-0006`, `55-0006`, `58-0006`;
+- metagraph-only discovery: PASS — exactly six served miners discovered from UIDs 1–6;
+- signed challenge fan-out: PASS;
+- concealed paired A0/A1 evaluation: PASS;
+- policy/regression gates: PASS;
+- live `weights_rate_limit=100` respected: PASS — initial remaining wait 60 blocks, legal submission block 123;
+- competitive `SetWeights`: PASS — extrinsic `124-0006`;
+- chain read-back of positive competitive weights: PASS;
+- evidence artifact: PASS — `consequent-m1-localnet-evidence`, artifact ID `9585670375`, digest `sha256:a55dbe1b34eafc0295e3c0398cec92b89039b181ea9e6d816ba609dbc6bb3b2b`.
+
+Final runner state: `M1_CHAIN_COMPETITION_PASS`.
+
+### Controlled M1 economic ordering
+
+Observed computed weights:
+- UID 4 / `useful_generalizing_memory`: `0.6746805888`;
+- UID 3 / `overfit_memory`: `0.3253194112`;
+- UID 1 / `no_memory`: `0`;
+- UID 2 / `irrelevant_memory`: `0`;
+- UID 5 / `harmful_memory`: `0`;
+- UID 6 / `policy_violating_memory`: `0`, hard-vetoed with 2 policy violations.
+
+Observed chain positive weights after quantization/read-back:
+- UID 4: `0.6746795697`;
+- UID 3: `0.3253204303`.
+
+All required M1 checks passed:
+- useful beats overfit;
+- overfit beats no-memory;
+- no-memory not rewarded;
+- irrelevant memory not rewarded;
+- harmful memory not rewarded;
+- policy-violating memory hard-vetoed;
+- useful memory has top weight;
+- weights normalized.
+
+This closes M1. Consequent has now proven a six-miner competitive chain-local economic loop, not merely a component pressure test.
 
 ## Important evidence boundary
 
-M0 closure does **not** mean:
-- six independent chain-registered miners have competed together;
-- multiple validators have independently scored the same miner population;
-- commit-reveal production behavior has been exercised end-to-end;
+M1 closure does **not** mean:
+- multiple independent validators have converged on the same miner ranking;
+- production commit-reveal behavior has been exercised end-to-end without disabling visibility delay;
+- copied-response, leakage, provenance-forgery, collusion, churn or evaluator-drift attacks are closed;
 - Bittensor public testnet mutation/deployment has occurred;
+- a consumer runtime has integrated the BMP lifecycle;
 - production demand has been demonstrated.
 
-Those remain later gates.
+## Next canonical gate — M2 adversarial mechanism pressure
 
-## Next canonical gate — M1
+Pressure the rewarded commodity and validator truth against:
+1. source-instance memorization and benchmark leakage;
+2. copied/collusive miner responses;
+3. provenance forgery;
+4. capability smuggling;
+5. malformed/oversized BMPs;
+6. catastrophic regressions hidden by positive mean uplift;
+7. policy violations with compensating uplift;
+8. stale winners, downtime and miner churn;
+9. score jumps/random audit triggers;
+10. evaluator-version drift and private-seed variance;
+11. validator copying/collusion;
+12. miner-validator collusion.
 
-Build a competitive chain-local Consequent subnet:
+M2 exit condition: no unresolved CRITICAL finding and no unbounded HIGH finding in the Adversary Foundry, with reproducible evidence for every closed attack.
 
-1. register six independent miner hotkeys;
-2. run six independent miner HTTP processes with distinct strategy archetypes;
-3. publish six endpoints through `ServeAxon`;
-4. discover all miners from the metagraph;
-5. issue concealed source-history challenges;
-6. collect six BMPs over signed HTTP;
-7. evaluate paired A0/A1 holdouts;
-8. apply policy/regression vetoes;
-9. map scores to UIDs;
-10. submit competitive weights and read them back from chain.
-
-Required qualitative ordering for the controlled M1 pressure topology:
-
-`useful_generalizing > overfit > no_memory`, while `irrelevant`, `harmful`, and `policy_violating` receive zero economic weight under the defined fixture.
-
-Only after M1 and adversarial pressure gates pass should Consequent perform funded Bittensor `test` mutations.
-
-No local, chain-local, CI, or read-only testnet result may be presented as deployed public-testnet evidence.
+Public Bittensor testnet mutations remain `NOT_RUN` and must not be inferred from chain-local evidence.
