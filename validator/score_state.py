@@ -5,17 +5,12 @@ from dataclasses import dataclass, replace
 
 @dataclass(frozen=True)
 class RollingMinerState:
-    """Persistent score state bound to one current chain identity placement.
-
-    Bittensor UIDs can be recycled. A validator must therefore never treat a UID
-    as durable miner identity. Consequent binds rolling economic credit to both
-    the miner hotkey and its current UID placement; either changing forces
-    requalification from fresh evidence.
-    """
+    """Persistent score state bound to one current chain identity placement."""
 
     uid: int
     hotkey: str
     evaluator_version: str
+    endpoint: str | None = None
     ema_score: float = 0.0
     sample_count: int = 0
     last_evaluated_block: int | None = None
@@ -40,6 +35,7 @@ def record_success(
     evaluator_version: str,
     uid: int | None = None,
     hotkey: str | None = None,
+    endpoint: str | None = None,
     alpha: float = 0.35,
 ) -> RollingMinerState:
     if not 0.0 < alpha <= 1.0:
@@ -49,6 +45,7 @@ def record_success(
 
     target_uid = state.uid if uid is None else int(uid)
     target_hotkey = state.hotkey if hotkey is None else str(hotkey)
+    target_endpoint = state.endpoint if endpoint is None else str(endpoint)
     if target_uid < 0 or not target_hotkey:
         raise ValueError("current uid and hotkey are required")
 
@@ -67,6 +64,7 @@ def record_success(
         state,
         uid=target_uid,
         hotkey=target_hotkey,
+        endpoint=target_endpoint,
         evaluator_version=evaluator_version,
         ema_score=ema,
         sample_count=count,
@@ -80,22 +78,26 @@ def record_failure(
     *,
     uid: int | None = None,
     hotkey: str | None = None,
+    endpoint: str | None = None,
     evaluator_version: str | None = None,
 ) -> RollingMinerState:
     target_uid = state.uid if uid is None else int(uid)
     target_hotkey = state.hotkey if hotkey is None else str(hotkey)
+    target_endpoint = state.endpoint if endpoint is None else str(endpoint)
     target_version = state.evaluator_version if evaluator_version is None else str(evaluator_version)
 
     if not _identity_matches(state, uid=target_uid, hotkey=target_hotkey):
-        # A failure by a new UID occupant must not inherit or mutate the previous
-        # miner's historical credit. Start a fresh, zero-credit failure epoch.
         return RollingMinerState(
             uid=target_uid,
             hotkey=target_hotkey,
+            endpoint=target_endpoint,
             evaluator_version=target_version,
             consecutive_failures=1,
         )
 
+    # Preserve the last successfully evaluated endpoint. If chain discovery has
+    # moved to a new endpoint and that endpoint fails, `effective_score` will
+    # fail closed on endpoint mismatch until a successful evaluation there.
     return replace(state, consecutive_failures=state.consecutive_failures + 1)
 
 
@@ -106,15 +108,14 @@ def effective_score(
     current_hotkey: str,
     current_block: int,
     evaluator_version: str,
+    current_endpoint: str | None = None,
     stale_after_blocks: int = 720,
     max_consecutive_failures: int = 2,
 ) -> float:
     """Return the economically eligible rolling score for the current neuron.
 
-    Fail closed on UID/hotkey identity mismatch, evaluator-major drift, stale
-    evidence, or repeated inability to answer. This prevents a new hotkey from
-    inheriting a recycled UID's score and prevents old winners retaining weight
-    indefinitely after disappearance or evaluator changes.
+    Fail closed on UID/hotkey identity mismatch, an unevaluated endpoint change,
+    evaluator-major drift, stale evidence, or repeated inability to answer.
     """
     if current_block < 0:
         raise ValueError("current_block must be non-negative")
@@ -125,6 +126,8 @@ def effective_score(
     if not current_hotkey:
         raise ValueError("current_hotkey is required")
     if not _identity_matches(state, uid=current_uid, hotkey=current_hotkey):
+        return 0.0
+    if current_endpoint is not None and state.endpoint != current_endpoint:
         return 0.0
     if state.sample_count <= 0 or state.last_evaluated_block is None:
         return 0.0
