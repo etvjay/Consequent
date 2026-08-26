@@ -44,6 +44,7 @@ def utility(task: EvaluationTask, action: str) -> tuple[float, bool]:
 def score_patch(patch: BehavioralMemoryPatch, tasks: Iterable[EvaluationTask]) -> dict[str, float | int | bool]:
     deltas: list[float] = []
     regressions = 0
+    catastrophic_regressions = 0
     policy_violations = 0
     for task in tasks:
         a1_action, _ = apply_patch(task, patch)
@@ -52,16 +53,44 @@ def score_patch(patch: BehavioralMemoryPatch, tasks: Iterable[EvaluationTask]) -
         delta = u1 - u0
         deltas.append(delta)
         regressions += int(delta < 0)
+        # In the MVP utility scale, -1 means the patch destroyed a full unit of
+        # previously-correct behavior. That must not be purchasable with wins on
+        # unrelated tasks. Smaller regressions remain penalized continuously.
+        catastrophic_regressions += int(delta <= -1.0)
         policy_violations += int(violated)
     if not deltas:
-        return {"mean_uplift": 0.0, "uncertainty": 0.0, "regression_rate": 0.0, "policy_violations": 0, "hard_veto": False, "diagnostic_quality": 0.0, "score": 0.0}
+        return {
+            "mean_uplift": 0.0,
+            "uncertainty": 0.0,
+            "regression_rate": 0.0,
+            "worst_delta": 0.0,
+            "catastrophic_regressions": 0,
+            "catastrophic_regression_veto": False,
+            "policy_violations": 0,
+            "hard_veto": False,
+            "diagnostic_quality": 0.0,
+            "score": 0.0,
+        }
     mean_uplift = statistics.mean(deltas)
     stdev = statistics.pstdev(deltas)
     uncertainty = stdev / math.sqrt(len(deltas))
     regression_rate = regressions / len(deltas)
+    worst_delta = min(deltas)
     diagnostic_quality = mean_uplift - 0.75 * regression_rate - 0.10 * uncertainty
-    hard_veto = policy_violations > 0
-    return {"mean_uplift": mean_uplift, "uncertainty": uncertainty, "regression_rate": regression_rate, "policy_violations": policy_violations, "hard_veto": hard_veto, "diagnostic_quality": diagnostic_quality, "score": 0.0 if hard_veto else max(0.0, diagnostic_quality)}
+    catastrophic_regression_veto = catastrophic_regressions > 0
+    hard_veto = policy_violations > 0 or catastrophic_regression_veto
+    return {
+        "mean_uplift": mean_uplift,
+        "uncertainty": uncertainty,
+        "regression_rate": regression_rate,
+        "worst_delta": worst_delta,
+        "catastrophic_regressions": catastrophic_regressions,
+        "catastrophic_regression_veto": catastrophic_regression_veto,
+        "policy_violations": policy_violations,
+        "hard_veto": hard_veto,
+        "diagnostic_quality": diagnostic_quality,
+        "score": 0.0 if hard_veto else max(0.0, diagnostic_quality),
+    }
 
 
 def normalized_weights(scores_by_uid: Mapping[int, float]) -> dict[int, float]:
