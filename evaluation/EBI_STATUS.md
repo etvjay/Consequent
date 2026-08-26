@@ -25,78 +25,102 @@ Final state: `LOCALNET_SET_WEIGHTS_READBACK_PASS`.
 
 ## M1 closure
 
-Authoritative M1 run: GitHub Actions `m1-localnet` run `32906478860` / run #1 on head `42060c3f49ea0db5b6d7af41e4da39bb1db80936`.
+Authoritative M1 run: GitHub Actions `m1-localnet` run `32906478860` / run #1.
 
 The fresh-chain competitive topology completed successfully:
 - fresh official Subtensor localnet: PASS;
 - subnet registration/activation: PASS — netuid 2;
-- owner/economic signer registered as UID 0;
-- six independent miner wallets/hotkeys funded and burned-registered: PASS — UIDs 1–6;
-- six independent authenticated FastAPI miner processes: PASS — ports 8091–8096;
-- six `ServeAxon` publications: PASS — chain extrinsics `43-0006`, `46-0006`, `49-0006`, `52-0006`, `55-0006`, `58-0006`;
-- metagraph-only discovery: PASS — exactly six served miners discovered from UIDs 1–6;
-- signed challenge fan-out: PASS;
-- concealed paired A0/A1 evaluation: PASS;
-- policy/regression gates: PASS;
-- live `weights_rate_limit=100` respected: PASS — initial remaining wait 60 blocks, legal submission block 123;
-- competitive `SetWeights`: PASS — extrinsic `124-0006`;
-- chain read-back of positive competitive weights: PASS;
-- evidence artifact: PASS — `consequent-m1-localnet-evidence`, artifact ID `9585670375`, digest `sha256:a55dbe1b34eafc0295e3c0398cec92b89039b181ea9e6d816ba609dbc6bb3b2b`.
+- owner/economic signer UID 0;
+- six miner hotkeys burned-registered — UIDs 1–6;
+- six authenticated FastAPI miner processes — ports 8091–8096;
+- six `ServeAxon` publications;
+- metagraph-only discovery;
+- signed challenge fan-out;
+- concealed paired A0/A1 evaluation;
+- policy/regression gates;
+- live `weights_rate_limit=100` respected;
+- competitive `SetWeights` — extrinsic `124-0006`;
+- chain read-back of competitive positive weights;
+- artifact `consequent-m1-localnet-evidence`, ID `9585670375`, digest `sha256:a55dbe1b34eafc0295e3c0398cec92b89039b181ea9e6d816ba609dbc6bb3b2b`.
 
 Final runner state: `M1_CHAIN_COMPETITION_PASS`.
 
-### Controlled M1 economic ordering
-
-Observed computed weights:
+Controlled computed weights:
 - UID 4 / `useful_generalizing_memory`: `0.6746805888`;
 - UID 3 / `overfit_memory`: `0.3253194112`;
-- UID 1 / `no_memory`: `0`;
-- UID 2 / `irrelevant_memory`: `0`;
-- UID 5 / `harmful_memory`: `0`;
-- UID 6 / `policy_violating_memory`: `0`, hard-vetoed with 2 policy violations.
+- all other fixture miners: `0`.
 
-Observed chain positive weights after quantization/read-back:
+Observed chain weights:
 - UID 4: `0.6746795697`;
 - UID 3: `0.3253204303`.
 
-All required M1 checks passed:
-- useful beats overfit;
-- overfit beats no-memory;
-- no-memory not rewarded;
-- irrelevant memory not rewarded;
-- harmful memory not rewarded;
-- policy-violating memory hard-vetoed;
-- useful memory has top weight;
-- weights normalized.
+This closes M1. It does not prove multiple independent validators, production commit-reveal, public testnet mutation, consumer integration, or production demand.
 
-This closes M1. Consequent has now proven a six-miner competitive chain-local economic loop, not merely a component pressure test.
+## M2 current checkpoint
 
-## Important evidence boundary
+Current implementation head at this checkpoint: `769178981e18bbf5411e6c7ebaebe3ccaa9f3ae7`.
 
-M1 closure does **not** mean:
-- multiple independent validators have converged on the same miner ranking;
-- production commit-reveal behavior has been exercised end-to-end without disabling visibility delay;
-- copied-response, leakage, provenance-forgery, collusion, churn or evaluator-drift attacks are closed;
-- Bittensor public testnet mutation/deployment has occurred;
-- a consumer runtime has integrated the BMP lifecycle;
-- production demand has been demonstrated.
+Current-head CI: **PASS** — `ci` run #146 / `32923398487`.
 
-## Next canonical gate — M2 adversarial mechanism pressure
+The current-head M1/localnet regressions are still running, so new runtime semantics after the authoritative M1 closure remain `CI_PASS` rather than fresh `CHAIN_LOCAL_PASS` until those jobs complete.
 
-Pressure the rewarded commodity and validator truth against:
-1. source-instance memorization and benchmark leakage;
-2. copied/collusive miner responses;
-3. provenance forgery;
-4. capability smuggling;
-5. malformed/oversized BMPs;
-6. catastrophic regressions hidden by positive mean uplift;
-7. policy violations with compensating uplift;
-8. stale winners, downtime and miner churn;
-9. score jumps/random audit triggers;
-10. evaluator-version drift and private-seed variance;
-11. validator copying/collusion;
-12. miner-validator collusion.
+M2 controls now implemented and CI-proven include:
+- admission before causal scoring;
+- challenge binding, bounded patch count/bytes and declarative payload restrictions;
+- provenance existence/family checks plus literal source grounding of rule condition key/value pairs;
+- semantic BMP digest with miner self-label excluded;
+- copycat durability pressure: copying source-bound memory does not manufacture generalization, while equivalent useful memory is not novelty-penalized;
+- hidden holdouts excluded from miner request serialization;
+- leaked hidden-instance conditions rejected by honest admission;
+- policy hard veto plus non-compensable full-unit catastrophic-regression veto;
+- audit escalation for score jumps, duplicates, downtime, stale evidence and new miners;
+- bounded staged evaluation: cheap screening for all, priority deep evaluation, private random-audit floor, explicit cost ceiling;
+- rolling score eligibility integrated into weight construction;
+- rolling state bound to current UID + hotkey + evaluated endpoint + evaluator version + freshness;
+- recycled UID / moved endpoint / disappearance / repeated failure / evaluator drift fail closed;
+- 100-private-seed validator-dispersion pressure;
+- transparent Yuma consensus/clipping reference model;
+- miner-validator leaked-holdout pressure and minority-vs-majority stake boundary;
+- validator-copying audit telemetry based on row similarity and private-evidence commitment reuse.
 
-M2 exit condition: no unresolved CRITICAL finding and no unbounded HIGH finding in the Adversary Foundry, with reproducible evidence for every closed attack.
+These are `CI_PASS`/reference controls, not claims that Subtensor has executed every M2 condition.
 
-Public Bittensor testnet mutations remain `NOT_RUN` and must not be inferred from chain-local evidence.
+## M2 manual chain proofs
+
+### M2-V1 — non-owner multi-validator consensus
+
+`.github/workflows/m2-multivalidator-localnet.yml` exists as a manual workflow.
+
+It is designed to prove two staked non-owner validators obtain real permits, miners enforce permits, three validators use independent private seeds, three rows settle, and actual post-epoch Subtensor incentives preserve behavioral-quality ordering.
+
+State: `NOT_RUN`.
+
+### M2-C1 — endpoint churn
+
+`.github/workflows/m2-churn-localnet.yml` exists as a manual workflow.
+
+It is designed to prove a same-hotkey ServeAxon endpoint move is reflected by refreshed metagraph discovery and signed traffic follows the new canonical endpoint.
+
+State: `NOT_RUN`.
+
+### M2-V2 — commit-reveal-on settlement
+
+Production-shaped commit/reveal/application evidence remains to be built and run with commit-reveal enabled.
+
+State: `NOT_RUN`.
+
+## M2 residual blockers
+
+M2 is **not closed**. Remaining blockers include:
+- non-owner multi-validator chain proof;
+- commit-reveal-on settlement;
+- real chain endpoint churn;
+- rolling multi-round chain settlement;
+- realistic validator deep-evaluation cost measurement;
+- explicit production executor action/capability vocabulary contract;
+- majority validator economic capture as a known Bittensor-system boundary;
+- public Bittensor testnet mutation/deployment.
+
+M2 exit condition remains: no unresolved CRITICAL finding and no unbounded HIGH finding, with reproducible evidence and residual-risk statements for each closed attack.
+
+Public Bittensor testnet mutations remain `NOT_RUN` and must not be inferred from local/reference evidence.
