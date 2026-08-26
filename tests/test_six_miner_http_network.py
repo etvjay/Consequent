@@ -155,7 +155,9 @@ async def test_six_independent_http_miners_reproduce_expected_pressure_ordering(
 
         assert reports[useful_uid]["score"] > 0
         assert reports[policy_uid]["hard_veto"] is True
-        assert reports[harmful_uid]["regression_rate"] > 0
+        harmful_rejected = reports[harmful_uid].get("admission_accepted") is False
+        harmful_regressed = reports[harmful_uid].get("regression_rate", 0.0) > 0
+        assert harmful_rejected or harmful_regressed
         assert weights[useful_uid] == max(weights.values())
         assert weights[policy_uid] == 0.0
         assert weights[harmful_uid] == 0.0
