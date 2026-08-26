@@ -3,27 +3,23 @@
 Status: `ACTIVE`
 Ground truth authority: [`GROUND_TRUTH.md`](./GROUND_TRUTH.md)
 Current branch: `bootstrap/m0`
-Audit date: 2026-08-24
+Audit date: 2026-08-26
 
 A checkbox is not evidence. Every `PASS` requires a reproducible artifact, CI run, chain read, transaction result, or public-network receipt.
 
----
-
 ## 0. Current release state
 
-**EBI state:** `M0_CLOSED / M1_ACTIVE`
+**EBI state:** `M1_CLOSED / M2_ACTIVE`
 
-**Current mechanism evidence:** `LOCAL_PASS + CI_PASS`
+**Mechanism evidence:** `LOCAL_PASS + CI_PASS`
 
-**Current Bittensor-network evidence:** `CHAIN_LOCAL_ECONOMIC_LOOP_PASS`
+**Bittensor-network evidence:** `CHAIN_LOCAL_COMPETITIVE_ECONOMIC_LOOP_PASS`
 
-**Current public testnet evidence:** `READ_ONLY_TESTNET_PASS` only
+**Public testnet evidence:** `READ_ONLY_TESTNET_PASS` only. Public testnet mutation/deployment remains `NOT_RUN`.
 
-Consequent must not be described as a deployed testnet subnet yet.
-
-Authoritative M0 closure evidence: GitHub Actions localnet run `32770499057` / run #34.
-
----
+Authoritative closures:
+- M0: localnet run #34 / `32770499057`.
+- M1: `m1-localnet` run #1 / `32906478860`, evidence artifact `9585670375`, digest `sha256:a55dbe1b34eafc0295e3c0398cec92b89039b181ea9e6d816ba609dbc6bb3b2b`.
 
 ## 1. Hard stop conditions
 
@@ -42,11 +38,9 @@ Any checked condition blocks promotion toward testnet/submission:
 - [ ] concealed evaluation data is exposed to miners;
 - [ ] hackathon requirements are represented from memory rather than current published sources.
 
----
-
 ## 2. A00 — Hackathon truth
 
-- [x] Current HackQuest event page checked 2026-08-24.
+- [x] Current HackQuest event page checked.
 - [x] Sep. 20 proposal checkpoint captured.
 - [x] Oct. 19 final deliverables captured.
 - [x] Judging criteria captured.
@@ -58,311 +52,258 @@ Any checked condition blocks promotion toward testnet/submission:
 
 **State:** `PASS_WITH_FUTURE_RECHECK`
 
----
-
 ## 3. A01 — Bittensor v11 stack
 
 - [x] Bittensor `11.1.0` pinned/tested.
-- [x] Python 3.10 + 3.12 CI pass.
-- [x] Own HTTP data plane implemented.
-- [x] Consequent-owned schemas implemented.
+- [x] Python 3.10 + 3.12 CI proven.
+- [x] Own HTTP data plane + Consequent schemas.
 - [x] `bt.http_auth.sign/verify` integrated.
-- [x] `bt.ServeAxon` implemented and chain-proven.
-- [x] metagraph discovery implemented and chain-proven.
-- [x] live subnet hyperparameter reads implemented.
-- [x] live rate-limit compliance implemented.
-- [x] `bt.SetWeights` implemented and chain-proven.
-- [x] chain weight read-back proven.
+- [x] `bt.ServeAxon` chain-proven.
+- [x] metagraph discovery chain-proven.
+- [x] live weight hyperparameter reads implemented.
+- [x] live Yuma/consensus-environment reads implemented.
+- [x] rate-limit compliance chain-proven.
+- [x] `bt.SetWeights` and read-back chain-proven.
 
 **State:** `CHAIN_LOCAL_PASS`
-
----
 
 ## 4. A02 — Commodity/category boundary
 
 Canonical invariant: **STORED ≠ RECALLED ≠ INFLUENTIAL ≠ BENEFICIAL**
 
-- [x] Digital commodity is Behavioral Memory Patch (BMP).
-- [x] BMP derives from source execution experience.
-- [x] BMP carries provenance.
-- [x] BMP is bounded by validator memory budget.
-- [x] BMP is declarative rather than executable.
-- [x] Capability expansion is excluded.
+- [x] Commodity is Behavioral Memory Patch (BMP).
+- [x] BMP derives from source execution experience and carries provenance.
+- [x] BMP is bounded and declarative.
+- [x] Capability expansion excluded.
 - [x] Retrieval/storage alone cannot earn reward.
-- [x] Paired unseen future execution is central to scoring.
-- [ ] expiry/supersession/revocation semantics implemented end-to-end.
-- [ ] lifecycle implementation matches `architecture/MEMORY_LIFECYCLE.md`.
+- [x] Paired unseen future execution drives utility.
+- [ ] expiry/supersession/revocation implemented end-to-end.
+- [ ] lifecycle implementation matches `architecture/MEMORY_LIFECYCLE.md` end-to-end.
 
 **State:** `PASS_DESIGN / PARTIAL_IMPLEMENTATION`
 
----
-
 ## 5. A03 — Protocol/admission
 
-- [x] challenge ID/source episodes/objective/constraints/budget represented.
-- [x] BMP response schema exists.
-- [x] challenge-response binding tested.
-- [x] provenance admission code exists.
-- [x] bounded patch count/shape tests exist.
-- [x] executable-payload rejection path exists.
-- [x] malformed request tests exist.
-- [ ] canonical digest format frozen across challenge/BMP/evaluation records.
+- [x] challenge/episode/constraint/budget schema.
+- [x] challenge-response binding.
+- [x] provenance admission.
+- [x] patch count and serialized-size bounds.
+- [x] declarative-only action grammar / capability-smuggling rejection.
+- [x] malformed protocol coverage.
+- [x] semantic BMP digest excludes miner self-label.
+- [x] duplicate semantic output surfaced as audit telemetry, not novelty reward.
+- [ ] canonical digest format frozen across all evidence records.
 - [ ] protocol version-negotiation policy frozen.
-- [ ] M1 multi-miner duplicate/copy-response handling chain-tested.
+- [ ] copy-response behavior proven on chain across multiple miners/validators.
 
-**State:** `CI_PASS / CHAIN_MULTI_MINER_NOT_RUN`
-
----
+**State:** `CI_PASS_ON_PRIOR_M2_HEAD / CURRENT_HEAD_REVALIDATING`
 
 ## 6. A04 — Miner service
 
-- [x] FastAPI health + memory-formation routes implemented.
-- [x] raw request body preserved for btauth verification.
+- [x] FastAPI health + memory-formation routes.
+- [x] raw request body preserved for btauth.
 - [x] network mode fails closed.
 - [x] wallet/hotkey identity loads in network mode.
-- [x] sender identity feeds caller policy.
-- [x] registered-caller policy exists.
-- [x] independent miner process startup proven.
-- [x] one chain-registered miner served a signed BMP successfully.
-- [ ] six independently chain-registered miner services proven together.
+- [x] metagraph-backed caller authorization.
+- [x] six independent chain-registered miner services proven together in M1.
+- [x] six chain-published endpoints proven together in M1.
 - [ ] production resource/rate limits finalized.
 
-**State:** `CHAIN_LOCAL_SINGLE_MINER_PASS`
-
----
+**State:** `CHAIN_LOCAL_SIX_MINER_PASS`
 
 ## 7. A05 — Authentication/authorization
 
-- [x] real Bittensor keypairs used.
+- [x] real Bittensor keypairs.
 - [x] valid signed requests pass.
-- [x] replay/tamper rejection tested.
-- [x] receiver binding enforced.
+- [x] replay/tamper/receiver binding tested.
 - [x] unsigned network requests rejected.
-- [x] registered validator → chain-discovered miner signed round trip proven.
-- [ ] validator-permit/stake policy proven with non-owner production-like validator state.
+- [x] chain-discovered signed validator→miner round trip.
+- [ ] non-owner validator permit/stake semantics chain-proven.
 
-**State:** `CHAIN_LOCAL_AUTH_PASS / PRODUCTION_POLICY_NOT_PROVEN`
+A manual M2-V1 workflow now exists to register/stake two non-owner validators, wait for permits, make miners require validator permits, and submit independent rows. It is **NOT_RUN** and therefore not evidence yet.
 
----
+**State:** `CHAIN_LOCAL_AUTH_PASS / NON_OWNER_VALIDATOR_NOT_RUN`
 
 ## 8. A06 — Registration and endpoint publication
 
-- [x] wallet/hotkey creation documented.
-- [x] subnet registration/activation proven on fresh local chain.
-- [x] validator registration proven — UID 1 in M0 run.
-- [x] miner registration proven — UID 2 in M0 run.
-- [x] non-loopback advertised endpoint validated.
-- [x] `ServeAxon` publication proven — extrinsic `18-0006` in M0 run.
+- [x] subnet registration/activation proven.
+- [x] M0 one-validator/one-miner lifecycle proven.
+- [x] M1 six independent miner registrations proven — UIDs 1–6.
+- [x] M1 six `ServeAxon` publications proven.
 - [x] metagraph endpoint read-back proven.
-- [ ] six miner registrations/publications proven in one run.
 - [ ] public testnet registration/publication proven.
 
-**State:** `CHAIN_LOCAL_SINGLE_MINER_PASS`
-
----
+**State:** `CHAIN_LOCAL_MULTI_MINER_PASS`
 
 ## 9. A07 — Metagraph discovery/caller policy
 
-- [x] validator reads current metagraph.
-- [x] UID/hotkey/endpoint derive from metagraph state.
-- [x] unserved miners can be filtered.
-- [x] miner checks caller registration.
-- [x] caller policy uses current v11 stake field semantics.
-- [x] manual endpoints are test adapters, not canonical discovery.
-- [ ] multi-miner refresh/churn behavior chain-tested.
-- [ ] permit/stake production thresholds validated on public testnet.
+- [x] current metagraph drives UID/hotkey/endpoint discovery.
+- [x] unserved miners filtered.
+- [x] caller registration checked.
+- [x] v11 stake semantics used.
+- [x] M1 exactly six miners discovered from metagraph only.
+- [ ] persistent disappearance/restart/endpoint-churn pressure run.
+- [ ] permit/stake thresholds validated outside owner special status.
 
-**State:** `CHAIN_LOCAL_PASS / M1_CHURN_NOT_RUN`
-
----
+**State:** `CHAIN_LOCAL_MULTI_MINER_PASS / CHURN_NOT_RUN`
 
 ## 10. A08 — Competitive multi-miner loop
 
-Controlled six-miner archetypes:
-- no-memory;
-- irrelevant-memory;
-- overfit-memory;
-- useful-generalizing-memory;
-- harmful-memory;
-- policy-violating-memory.
+Controlled archetypes: no-memory, irrelevant-memory, overfit-memory, useful-generalizing-memory, harmful-memory, policy-violating-memory.
 
-Current evidence:
-- [x] six independent Uvicorn processes run over real sockets.
-- [x] validator fans out challenges.
-- [x] concealed scoring works.
-- [x] results bind miner identity/challenge.
-- [x] useful generalizer ranks highest in component pressure test.
-- [x] policy-violating miner is hard-vetoed.
-- [ ] six hotkeys registered on one Bittensor subnet.
-- [ ] six endpoints published with `ServeAxon`.
-- [ ] all six discovered from metagraph only.
-- [ ] all six queried over btauth using their registered hotkeys.
-- [ ] competitive UID weights accepted/read back from chain.
+- [x] six independent Uvicorn processes.
+- [x] six chain-registered hotkeys.
+- [x] six `ServeAxon` records.
+- [x] metagraph-only discovery.
+- [x] btauth challenge fan-out.
+- [x] concealed paired scoring.
+- [x] useful generalizer beats overfit.
+- [x] no-memory/irrelevant/harmful receive zero.
+- [x] policy-violating miner hard-vetoed.
+- [x] competitive UID vector accepted and read back from chain.
 
-**State:** `LOCAL_NETWORK_COMPONENT_PASS / M1_CHAIN_NOT_RUN`
+Authoritative M1 result: useful UID4 `0.6746805888` computed / `0.6746795697` observed; overfit UID3 `0.3253194112` computed / `0.3253204303` observed.
 
----
+**State:** `CHAIN_LOCAL_COMPETITIVE_PASS`
 
-## 11. A09 — Causal evaluator
+## 11. A09 — Causal evaluator and rolling economics
 
-- [x] A0 no-memory baseline exists.
-- [x] A1 memory-conditioned path exists.
+- [x] A0 baseline and A1 memory treatment.
 - [x] paired utility delta drives score.
-- [x] capabilities held constant in controlled evaluator.
-- [x] useful generalization beats overfit under distribution shift.
-- [x] harmful memory incurs regression penalty.
-- [x] policy violation is non-compensable.
-- [x] robustness tested across private seeds.
-- [ ] adaptive deep-evaluation staging implemented.
-- [ ] rolling uncertainty/recency score state implemented for persistent validators.
-- [ ] evaluator-major-version migration behavior proven.
+- [x] capabilities held constant.
+- [x] generalization beats source-bound overfit.
+- [x] regression penalty.
+- [x] policy violation non-compensable.
+- [x] adaptive deep-evaluation scheduler implemented.
+- [x] score-jump / duplicate / new-miner / stale / failure audit signals implemented.
+- [x] rolling EMA/freshness/failure state implemented.
+- [x] evaluator-version mismatch makes old score economically ineligible.
+- [x] first success under new evaluator resets history to a new epoch.
+- [ ] persistent rolling economics proven in repeated chain rounds.
 
-**State:** `LOCAL_PASS / M1_ROLLING_ECONOMICS_NOT_PROVEN`
-
----
+**State:** `LOCAL_IMPLEMENTATION_PASS / PERSISTENT_CHAIN_ROUNDS_NOT_RUN`
 
 ## 12. A10 — Adversarial pressure
 
-- [x] benchmark/source-instance overfit fixture exists.
-- [x] harmful-memory regression fixture exists.
-- [x] policy-violation compensation attack is blocked.
-- [x] capability invariance is asserted in controlled evaluation.
-- [ ] provenance forgery mutation suite.
-- [ ] copied-response/copycat miner chain test.
-- [ ] holdout-leakage pressure test.
-- [ ] validator/miner collusion simulation.
-- [ ] validator cross-seed dispersion audit.
-- [ ] stale winner/downtime/churn test.
-- [ ] score-jump random-audit policy implemented.
+See [`evaluation/M2_ADVERSARIAL.md`](./evaluation/M2_ADVERSARIAL.md).
 
-**State:** `PARTIAL_PASS`
+Implemented/local/reference controls:
+- [x] source-instance overfit fixture.
+- [x] provenance-forgery rejection.
+- [x] capability-smuggling rejection.
+- [x] malformed/oversized BMP rejection.
+- [x] challenge-binding/replay defense.
+- [x] duplicate semantic-response telemetry.
+- [x] holdout serialization separation regression coverage.
+- [x] catastrophic regression penalty.
+- [x] policy compensation hard veto.
+- [x] stale winner/downtime score ineligibility.
+- [x] score-jump/random-audit policy.
+- [x] evaluator-version drift requalification.
+- [x] Yuma reference consensus/clipping model.
+- [x] three-validator independent-seed reference test.
+- [x] 100-private-seed validator-dispersion harness implemented.
+- [ ] current-head CI for newest dispersion/Yuma additions completed.
+- [ ] endpoint churn/restart chain pressure.
+- [ ] non-owner multi-validator chain proof (M2-V1).
+- [ ] commit-reveal-on settlement proof (M2-V2).
+- [ ] miner-validator collusion chain pressure.
 
----
+**State:** `M2_ACTIVE / REFERENCE_AND_LOCAL_CONTROLS_ADVANCED / CHAIN_MULTIVALIDATOR_NOT_RUN`
 
 ## 13. A11 — Weight construction and settlement
 
-M0 strict evidence:
-- [x] live `min_allowed_weights` read.
-- [x] live `max_weights_limit` read.
-- [x] live `weights_version` read.
-- [x] live `weights_rate_limit=100` read.
-- [x] validator waited from 87 remaining blocks to legal submission block 110.
-- [x] commit-reveal visibility delay handled explicitly in disposable M0 fixture.
-- [x] `SetWeights` accepted — extrinsic `111-0006`.
-- [x] chain read-back observed validator UID 0 → miner UID 2 weight `1.0`.
-- [ ] competitive six-miner weight vector chain-proven.
+- [x] live min/max/version/rate-limit reads.
+- [x] M0 single-miner `SetWeights` + read-back.
+- [x] M1 competitive six-miner `SetWeights` + read-back — extrinsic `124-0006`.
+- [x] weight-rate-limit compliance proven.
+- [x] current consensus environment (tempo/kappa/validator cap/activity/bond/Yuma fields) readable.
+- [ ] multiple independent validator rows chain-proven.
+- [ ] actual post-epoch Yuma outcome chain-proven for Consequent.
 - [ ] production commit-reveal path proven without disabling it.
 - [ ] public testnet weight submission proven.
 
-**State:** `CHAIN_LOCAL_SINGLE_MINER_ECONOMIC_PASS`
-
----
+**State:** `CHAIN_LOCAL_COMPETITIVE_ECONOMIC_PASS / MULTIVALIDATOR_NOT_RUN`
 
 ## 14. A12 — Evidence/provenance
 
 - [x] evidence classes defined.
-- [x] CI and chain-local evidence kept distinct.
-- [x] failures retained as evidence rather than erased.
-- [x] strict localnet artifact uploaded for M0.
-- [x] chain extrinsic references captured for ServeAxon and SetWeights.
-- [ ] validator batch evidence record includes all canonical digests/commitments.
+- [x] lower evidence classes not promoted to chain/testnet claims.
+- [x] failures retained.
+- [x] M0 evidence artifact.
+- [x] M1 competitive evidence artifact.
+- [x] chain extrinsic references retained.
+- [ ] complete validator batch digest/commitment record.
 - [ ] retired holdout manifests support later replay.
-- [ ] M1 competitive evidence bundle generated.
+- [ ] M2-V1 evidence bundle generated by a successful run.
 
-**State:** `M0_PASS / M1_PARTIAL`
-
----
+**State:** `M1_PASS / M2_EVIDENCE_ACTIVE`
 
 ## 15. A13 — Public testnet deployment
 
-- [x] read-only Bittensor `test` connectivity proven.
-- [ ] funded owner/operator wallet prepared.
-- [ ] public-test subnet/netuid created/selected.
-- [ ] miner hotkeys funded/registered.
-- [ ] validator hotkeys funded/registered.
-- [ ] public endpoints reachable.
-- [ ] `ServeAxon` visible on public test chain.
-- [ ] signed BMP traffic succeeds.
-- [ ] competitive scoring succeeds.
-- [ ] `SetWeights` succeeds under live public-test policy.
-- [ ] weight commit/reveal/read-back evidence captured.
-- [ ] restart/recovery proof captured.
+- [x] read-only Bittensor `test` connectivity.
+- [ ] funded public-test operator setup.
+- [ ] subnet/netuid mutation.
+- [ ] miner/validator registrations.
+- [ ] public served endpoints.
+- [ ] signed BMP traffic.
+- [ ] competitive scoring.
+- [ ] commit/reveal and weight settlement.
+- [ ] restart/recovery proof.
 
 **State:** `READ_ONLY_TESTNET_PASS / MUTATIONS_NOT_RUN`
 
----
-
 ## 16. A14 — Hackathon proposal
 
-- [x] problem/use case defined.
-- [x] digital commodity defined.
-- [x] miner task defined.
-- [x] validator responsibility defined.
-- [x] incentive/scoring design defined.
-- [x] architecture reference exists.
-- [x] Foundries exist as operating disciplines.
-- [ ] demand-side user story sharpened with one concrete consumer integration.
-- [ ] M1 evidence incorporated.
-- [ ] testnet roadmap updated from real M1 state.
-- [ ] proposal cold-read against all seven judging dimensions.
+- [x] problem/use case.
+- [x] digital commodity.
+- [x] miner task.
+- [x] validator responsibility.
+- [x] incentive/scoring design.
+- [x] architecture/Foundries.
+- [ ] one concrete demand-side consumer integration.
+- [ ] M1 evidence incorporated into submission draft.
+- [ ] roadmap updated from M2 evidence.
+- [ ] cold-read against all seven judging dimensions.
 
 **State:** `STRONG_DRAFT_BASE / NOT_SUBMISSION_READY`
 
----
-
 ## 17. A15 — Public repo/final deliverables
 
-- [x] public repository.
-- [x] miner code.
-- [x] validator code.
-- [x] protocol code.
-- [x] localnet documentation.
-- [x] testnet runbook draft.
-- [x] reference architecture.
-- [x] operating Foundries.
-- [ ] M1 competitive chain-local evidence.
+- [x] public repo, miner code, validator code, protocol code.
+- [x] localnet documentation and reference architecture.
+- [x] M1 competitive chain-local evidence.
 - [ ] public testnet evidence.
-- [ ] cold-clone setup proof.
-- [ ] demo script/video.
-- [ ] final pitch/proposal.
+- [ ] cold-clone proof.
+- [ ] demo/video.
+- [ ] final proposal/pitch.
 
 **State:** `IN_PROGRESS`
 
----
-
 ## 18. Current build order
 
-### M0 — strict one-miner economic loop
+### M0 — CLOSED
+One-miner strict chain-local economic loop.
 
-**CLOSED.** Run `32770499057` proved registration → serving → discovery → signed BMP → rate-limit compliance → `SetWeights` → chain read-back.
+### M1 — CLOSED
+Six independently chain-registered miners, concealed competitive evaluation, competitive UID weights, accepted `SetWeights`, chain read-back. Authoritative run `32906478860`.
 
-### M1 — competitive chain-local subnet
-
-Build six independently chain-registered miner hotkeys/services and prove:
+### M2 — ACTIVE
+Attack the measurement and economic mechanism. Immediate gates:
 
 ```text
-metagraph discovery
-→ signed fan-out
-→ six BMPs
-→ concealed paired evaluation
-→ vetoes/regression penalties
-→ competitive UID score vector
-→ accepted SetWeights
-→ chain read-back
+current-head CI/M0/M1 regression
+→ 100-seed validator-dispersion evidence
+→ churn/restart pressure
+→ M2-V1 non-owner multi-validator chain proof
+→ M2-V2 commit-reveal-on settlement
+→ residual-risk review
 ```
 
-Controlled expected ordering:
-
-`useful_generalizing > overfit > no_memory`, with irrelevant, harmful and policy-violating miners at zero under the fixture.
-
-### M2 — adversarial mechanism pressure
-
-Attack copying, leakage, provenance forgery, capability smuggling, collusion, churn, downtime, score jumps and evaluator drift.
+M2 exit: no unresolved `CRITICAL` finding and no unbounded `HIGH` finding, with reproducible evidence for every closed attack.
 
 ### M3 — consumer integration
-
-Prove one external runtime can emit episodes, request competitive BMP formation, persist an accepted BMP, retrieve/apply it later and report influence evidence.
+One external runtime emits episodes, requests competitive BMP formation, persists/retrieves/applies accepted BMPs, and reports influence evidence.
 
 ### M4 — public Bittensor testnet
-
-Only after M1/M2/M3 local gates are evidence-backed should funded public-test mutations begin.
+Only after the preceding local/chain gates are evidence-backed should funded public-test mutations begin.

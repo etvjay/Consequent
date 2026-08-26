@@ -1,33 +1,33 @@
 # Consequent Production Architecture
 
-This document defines the production operating shape that follows from the mechanism and M0 chain-local proof.
+This document defines the production operating shape that follows from the proven M0/M1 chain-local mechanism and the active M2 adversarial program.
 
 Production goal:
 
-> Run Consequent as a reliable Bittensor subnet whose validators can continuously discover miners, issue concealed formation challenges, evaluate causal behavioral uplift, and publish defensible weights while external runtimes consume accepted BMPs safely.
-
----
+> Run Consequent as a reliable Bittensor subnet whose independent validators can continuously discover miners, issue concealed formation challenges, evaluate causal behavioral uplift, and publish defensible weights while external runtimes consume accepted BMPs safely.
 
 ## 1. Production topology
 
 ```text
                          ┌──────────────────────┐
                          │ Bittensor Subtensor  │
-                         │ registration/weights │
+                         │ identity / Yuma /    │
+                         │ weights / emissions  │
                          └──────────┬───────────┘
                                     │
-                  metagraph / weights / ServeAxon
+                  metagraph / permits / weights / ServeAxon
                                     │
           ┌─────────────────────────┴──────────────────────────┐
           │                                                    │
 ┌─────────▼─────────┐                                ┌─────────▼─────────┐
-│ Validator Cluster │                                │ Miner Population  │
+│ Validator Set     │                                │ Miner Population  │
 │                  │                                │                  │
-│ metagraph watch  │◄──── btauth/1 signed HTTP ───►│ formation API    │
+│ private seeds    │◄──── btauth/1 signed HTTP ───►│ formation API    │
 │ challenge gen    │                                │ strategy/model   │
-│ evaluator workers│                                │ BMP construction │
-│ score state      │                                │ telemetry        │
-│ weight scheduler │                                └───────────────────┘
+│ admission        │                                │ BMP construction │
+│ paired evaluator │                                │ telemetry        │
+│ score state      │                                └───────────────────┘
+│ weight scheduler │
 └─────────┬─────────┘
           │ accepted/evaluated BMP references
           ▼
@@ -39,260 +39,214 @@ Production goal:
 └─────────────────────┘        └────────────────────────┘
 ```
 
----
+Bittensor owns network identity, registration, validator permits/activity, stake-weighted consensus, clipping, bonds/dividends, weight settlement and emissions. Consequent owns the digital commodity, HTTP protocol, challenge generation, admission rules, causal evaluator, score state and evidence.
 
 ## 2. Validator production services
 
-### Metagraph watcher
-Responsibilities:
-- refresh subnet state;
-- maintain UID/hotkey/axon map;
-- detect registration/deregistration;
-- record validator permit/stake state;
-- flag stale or invalid served endpoints.
+### Metagraph / consensus watcher
+- refresh UID/hotkey/axon state;
+- detect registration, deregistration and endpoint churn;
+- record validator permit/stake/activity state;
+- read live weight constraints;
+- record tempo, kappa, validator cap, activity window, bond/Yuma policy and commit-reveal state.
 
 ### Challenge generator
-Responsibilities:
-- sample task family;
-- generate latent rule/environment;
-- create source episodes;
-- create concealed holdouts independently;
-- version generator grammar;
+- sample task family and latent rule;
+- generate source episodes;
+- independently generate concealed holdouts;
+- version generator/evaluator grammar;
 - preserve private seeds;
-- emit challenge commitments.
+- emit public commitments without exposing active holdouts.
 
 ### Query scheduler
-Responsibilities:
 - select miner sample;
 - sign requests;
-- enforce deadlines/timeouts;
-- bound concurrency;
+- enforce deadlines/timeouts and bounded concurrency;
 - retry only when replay/freshness semantics permit;
 - distinguish unavailable, unauthorized, malformed and invalid responses.
 
 ### Admission engine
-Cheap pre-evaluation rejection:
-- schema;
-- provenance;
-- budget;
-- duplicate/digest;
-- capability smuggling;
-- action grammar;
-- challenge binding;
-- deadline/freshness.
+Before expensive evaluation reject:
+- wrong challenge binding;
+- schema/version violations;
+- forged/mismatched provenance;
+- memory-budget or serialized-size overflow;
+- duplicate rule IDs / ambiguous shape;
+- executable/capability payloads;
+- unsafe action/condition grammar.
+
+Semantic duplicate BMPs are audit signals, not automatic guilt or novelty penalties.
 
 ### Evaluator workers
-Responsibilities:
 - paired A0/A1 execution;
-- matched seeds;
-- task-family utility;
-- policy violation detection;
-- regression accounting;
+- matched seeds and constant capabilities;
+- concealed future tasks;
+- family utility;
+- regression and policy violation detection;
 - cost/latency metrics where relevant;
-- repeat sampling for uncertain miners.
+- adaptive repeat sampling for uncertain/suspicious miners.
 
 ### Score service
 Maintains:
 - per-family rolling evidence;
-- robust mean/quantile statistics;
-- uncertainty;
-- recent-sample requirements;
-- downtime decay;
+- robust uplift and uncertainty;
+- recency/sample requirements;
+- consecutive-failure/downtime state;
 - policy hard vetoes;
-- evaluator-version epochs.
+- evaluator-version epochs;
+- audit signals for score jumps, duplicates, stale evidence and new miners.
+
+Old evaluator-version scores are economically ineligible. First success under a new evaluator starts a new score epoch rather than inheriting old credit.
 
 ### Weight scheduler
-Responsibilities:
-- read live subnet hyperparameters;
-- obey `weights_rate_limit`;
-- obey `weights_version`;
-- handle min/max weight constraints;
-- handle commit-reveal state;
+- convert eligible miner scores to non-negative normalized UID weights;
+- read live rate limit/version/min-max constraints;
+- obey validator activity requirements;
+- handle commit-reveal state rather than assuming immediate visibility;
 - plan/dry-run mutations where possible;
 - submit weights;
-- verify chain acceptance/read-back;
-- write chain evidence.
+- record transaction/commit/reveal evidence;
+- verify the chain/Yuma result independently of Consequent's local reference model.
 
----
+## 3. Multi-validator invariant
 
-## 3. Miner production services
+Production Consequent must not require validators to share exact challenges or identical rows.
 
-Each miner should be independently deployable.
+Required property:
+
+```text
+same latent commodity semantics
++ independent private seeds
++ different concealed instances
+→ non-identical validator rows
+→ statistically convergent miner-quality ranking
+→ stake-supported Bittensor consensus
+```
+
+The local `consequent.yuma_reference` helper exists only to falsify our evaluator-to-weight reasoning cheaply. It is not authoritative chain evidence.
+
+Security boundary: if adversarial validator stake itself crosses Bittensor's consensus threshold, Consequent cannot locally repair the economic majority. That is a network/economic assumption which must be stated rather than hidden inside evaluator logic.
+
+## 4. Miner production services
+
+Each miner is independently deployable and competitive.
 
 Required components:
-- wallet/hotkey config;
-- network/netuid config;
+- wallet/hotkey + network/netuid config;
 - HTTP service;
 - fail-closed btauth verification;
-- registered-caller authorization policy;
-- optional validator-permit/stake threshold policy;
-- formation strategy adapter;
-- BMP structural validator before response;
-- request budget/resource guard;
-- rate limiting by verified hotkey;
-- structured logs/metrics;
-- health/readiness endpoints;
-- graceful shutdown.
+- registered caller authorization;
+- validator-permit/stake policy in production mode;
+- open formation-strategy adapter;
+- BMP structural validation before response;
+- request resource/rate guards by verified identity;
+- health/readiness + structured telemetry;
+- graceful restart/shutdown.
 
-Miner algorithm internals are deliberately open competition.
+Miner algorithm internals remain open competition.
 
----
+## 5. Consumer integration surface
 
-## 4. Consumer integration production surface
+The consumer does not need to run a validator.
 
-Reference external API/SDK responsibilities:
+Reference responsibilities:
+- normalized execution-episode ingest;
+- request competitive BMP formation;
+- persist accepted BMPs with lifecycle metadata;
+- retrieve by scope/trigger under a memory budget;
+- apply declarative guidance without adding capabilities;
+- record influence/outcome evidence where possible;
+- expire/supersede/revoke stale or unsafe BMPs.
 
-### Episode ingest
-Accept execution traces in a normalized schema without requiring Consequent to own the originating agent runtime.
-
-### Formation request
-A consumer may ask the network/runtime adapter to obtain one or more candidate/evaluated BMPs from prior episodes.
-
-### BMP registry
-Stores accepted patches and lifecycle metadata.
-
-### Retrieval
-Runtime-side scope/trigger matching plus bounded ranking.
-
-### Application hook
-Injects selected declarative BMP guidance without changing executor capabilities.
-
-### Influence logging
-Records which BMPs were available/applied and resulting outcomes when possible.
-
-Consequent should support consumers without making them run a validator.
-
----
-
-## 5. Availability and failure policy
+## 6. Availability and failure policy
 
 ### Miner timeout
-- score current challenge as unavailable/zero contribution;
-- do not block evaluation batch;
-- track repeated downtime separately from harmful output.
+Current challenge contribution is unavailable/zero; batch continues; repeated downtime eventually removes old score eligibility.
 
 ### Validator evaluator failure
-- mark sample invalid rather than silently zeroing miner;
-- retry under bounded policy;
-- preserve evaluator error evidence.
+Mark sample invalid rather than silently penalizing the miner; retry under bounded policy and retain evaluator-failure evidence.
 
 ### Chain unavailable
-- retain computed score snapshot;
-- do not claim weight publication;
-- retry only under chain/rate-limit policy;
-- avoid recomputing with different challenge data solely because settlement was delayed.
+Retain the computed score snapshot but do not claim weight publication; do not regenerate a different challenge solely because settlement was delayed.
 
 ### Evidence store unavailable
-- fail weight publication closed if required evidence cannot be durably recorded;
-- mechanism should prefer delayed settlement over unauditable settlement.
+Fail settlement closed if the required evidence cannot be durably recorded.
 
-### Consumer store unavailable
-Does not affect validator consensus; consumer runtime decides fallback behavior.
+### Evaluator version change
+Old score state becomes ineligible until requalified under the new evaluator epoch.
 
----
-
-## 6. Security policies
+## 7. Security / privacy policies
 
 - network/testnet/live miner mode requires authentication;
 - signed identity and authorization are separate checks;
-- active holdout seeds never sent to miners;
-- raw request body/path preserved for btauth verification;
-- replay cache bounded and persistent enough for deployment topology;
-- no wallet secrets in logs or evidence artifacts;
-- validator challenge evidence separates public commitment from private holdout material;
-- BMP payload is declarative-only;
-- runtime cannot auto-install tools/modules from BMP content;
-- external consumer namespaces are isolated.
+- active holdout seeds/tasks never sent to miners;
+- raw body/path preserved for btauth verification;
+- replay cache bounded and deployment-appropriate;
+- wallet secrets never enter logs/artifacts;
+- public challenge commitment separated from private holdout material;
+- BMP is declarative-only and cannot auto-install code/tools/models;
+- duplicate outputs escalate audits instead of creating a novelty reward;
+- external consumer namespaces remain isolated.
 
----
+## 8. Evidence and observability
 
-## 7. Data retention
-
-### Public/replayable
-- protocol/evaluator versions;
-- retired fixtures;
-- score methodology;
-- chain weight transactions;
-- sanitized evaluation evidence;
-- challenge commitments.
-
-### Private while active
-- current holdout seeds;
-- exact hidden task composition;
-- anti-gaming sampling policy details that enable benchmark extraction;
-- wallet secrets.
-
-### Consumer-private
-- raw execution episodes unless explicitly submitted;
-- tenant BMP registry;
-- influence records tied to private workloads.
-
----
-
-## 8. Observability
-
-Validator metrics:
-- miners discovered/served;
-- request success/error classes;
-- p50/p95 latency;
+Validator metrics/evidence should include:
+- discovered/served miners and endpoint churn;
+- validator permit/activity state;
+- request success/error class and latency;
 - admission rejection reasons;
-- evaluation cost per miner/family;
-- uplift distribution;
-- regression/policy violation rates;
-- uncertainty/sample count;
-- weight submission delay;
+- evaluator version/private challenge commitment;
+- evaluation cost by miner/family;
+- uplift/regression/policy/uncertainty/sample counts;
+- audit-escalation reason;
+- rolling eligible score;
+- cross-validator score/rank dispersion where available;
+- live kappa/tempo/activity/bond/Yuma environment;
+- commit/reveal/submission state;
 - chain rate-limit remaining;
-- commit/reveal state;
-- score dispersion across validators where available.
+- accepted transaction and eventual chain/Yuma outcome.
 
-Miner metrics:
-- authenticated request count;
-- unauthorized/replay/stale failures;
-- formation latency;
-- BMP size/rule count;
-- strategy failures;
-- resource utilization.
-
-Evidence metrics:
-- batches without complete evidence should be zero;
-- digest mismatch should page/fail closed.
-
----
+A batch without complete required evidence must not be promoted as proof.
 
 ## 9. Deployment stages
 
 ```text
-M0  one-miner strict chain-local economic loop        CLOSED
-M1  six chain-registered miners + competitive weight NEXT
-M2  adversarial mechanism pressure                   PENDING
-M3  external consumer integration                    PENDING
-T1  funded Bittensor test deployment                 PENDING
-T2  multi-validator testnet                          PENDING
-P0  production candidate                             PENDING
+M0     one-miner strict chain-local economic loop                 CLOSED
+M1     six-miner competitive chain-local economic loop            CLOSED
+M2     adversarial mechanism pressure                             ACTIVE
+M2-V1  non-owner multi-validator chain-local/Yuma proof           DESIGNED / NOT_RUN
+M2-V2  commit-reveal-on chain-local settlement                    NOT_RUN
+M3     external consumer integration                              PENDING
+T1     funded Bittensor public-test deployment                    PENDING
+T2     repeated public-test multi-validator operation             PENDING
+P0     production candidate                                       PENDING
 ```
 
-Production promotion requires both protocol correctness and evidence quality; deployment alone is not sufficient.
+M1 authoritative run: `32906478860`.
 
----
+M2-V1 is intentionally a manual evidence workflow because validator permits/Yuma outcomes depend on epoch timing. The workflow being present in the repo is **not evidence that it passed**.
 
-## 10. Production release gates
+## 10. Release gates
 
-Before public testnet mutation:
-- M1 six-chain-miner competitive loop passes;
-- no unresolved critical adversarial findings;
-- BMP lifecycle schema includes expiry/supersession/revocation;
-- structural admission rejects capability payloads;
-- validator live hyperparameter handling tested;
-- evidence ledger is complete;
-- cold-clone setup works.
+Before public-test mutation:
+- M1 remains regression-green;
+- no unresolved CRITICAL M2 finding and no unbounded HIGH finding;
+- provenance/capability/admission controls are CI-backed;
+- validator-dispersion pressure is evidence-backed;
+- non-owner validator permit semantics are understood/proven or explicitly bounded;
+- commit-reveal behavior has a dedicated proof plan;
+- lifecycle expiry/supersession/revocation surface is implemented sufficiently for consumer use;
+- evidence ledger and cold-clone setup are complete.
 
 Before production candidate:
-- repeated testnet rounds;
-- multiple validators or credible independent evaluation;
-- commit-reveal behavior proven rather than disabled;
+- repeated public-test rounds;
+- multiple independent permitted validators;
+- statistically convergent private-seed evaluation;
+- commit-reveal-on settlement proven;
 - validator cost envelope measured;
-- challenge leakage pressure-tested;
-- consumer integration demonstrated;
-- restart/recovery and state continuity tested;
-- monitoring/runbooks exist;
-- security review complete.
+- leakage/copying/collusion/churn/restart pressure-tested;
+- consumer integration demonstrates actual beneficial influence;
+- monitoring/runbooks and security review complete;
+- demand-side reason for the subnet to receive economic support is demonstrated.
+
+Deployment alone is insufficient. Production promotion requires mechanism correctness, validator-economic correctness, evidence quality and consumer value.
