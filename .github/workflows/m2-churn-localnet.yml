@@ -31,14 +31,7 @@ jobs:
           docker run -d --rm --name consequent-m2-churn-chain \
             -p 9944:9944 -p 9945:9945 \
             ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
-          for i in $(seq 1 90); do
-            if btcli query metagraph --netuid 1 --network local --json >/tmp/churn-root-metagraph.json 2>/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs consequent-m2-churn-chain
-          exit 1
+          python scripts/localnet_ready.py --network local --attempts 90 --poll-seconds 2 --min-block 1 --output /tmp/churn-chain-ready.json
 
       - name: Create and fund owner and churn miner
         run: |
@@ -188,7 +181,7 @@ jobs:
           name: consequent-m2-churn-localnet-evidence
           if-no-files-found: warn
           path: |
-            /tmp/churn-root-metagraph.json
+            /tmp/churn-chain-ready.json
             /tmp/churn-metagraph-registered.json
             /tmp/churn-before.json
             /tmp/churn-serve-a.txt
@@ -200,6 +193,7 @@ jobs:
       - name: Diagnostics
         if: failure()
         run: |
+          cat /tmp/churn-chain-ready.json 2>/dev/null || true
           cat /tmp/churn-before.json 2>/dev/null || true
           cat /tmp/churn-result.json 2>/dev/null || true
           cat /tmp/churn-miner-a.log 2>/dev/null || true
