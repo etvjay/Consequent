@@ -36,8 +36,6 @@ jobs:
           docker run -d --rm --name consequent-m2-chain \
             -p 9944:9944 -p 9945:9945 \
             ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
-          # Chain readiness must not assume a particular bootstrap subnet exists.
-          # The evidence contract begins once Subtensor is producing queryable blocks.
           python scripts/localnet_ready.py \
             --network local \
             --attempts 90 \
@@ -101,12 +99,15 @@ jobs:
           import asyncio, json
           import bittensor as bt
 
+          def balance_evidence(balance):
+              return {
+                  'rao': int(balance.rao),
+                  'amount': float(balance.amount),
+                  'netuid': int(balance.netuid),
+                  'unit': str(balance.unit),
+              }
+
           async def main():
-              # Validator permits are proven from the resulting live metagraph, not
-              # from a hard-coded mainnet stake assumption. On a fresh localnet the
-              # runtime threshold is normally zero and max_validators exceeds this
-              # nine-neuron fixture, so a small positive stake is sufficient while
-              # avoiding a destructive swap against the young subnet pool.
               names = ['consequent-m2-validator-1', 'consequent-m2-validator-2']
               evidence = []
               async with bt.Subtensor('local') as client:
@@ -114,6 +115,8 @@ jobs:
                   for name in names:
                       wallet = bt.Wallet(name=name, hotkey='default')
                       prior = before.by_hotkey(wallet.hotkey.ss58_address)
+                      if prior is None:
+                          raise SystemExit(f'registered validator missing before stake: {name}')
                       intent = bt.AddStake(
                           hotkey_ss58=wallet.hotkey.ss58_address,
                           netuid=2,
@@ -126,7 +129,7 @@ jobs:
                       row = {
                           'wallet': name,
                           'hotkey': wallet.hotkey.ss58_address,
-                          'stake_tao_before': float(prior.stake_tao),
+                          'total_stake_before': balance_evidence(prior.total_stake),
                           'plan': str(plan),
                           'amount_tao': 10.0,
                           'slippage_protection': True,
@@ -149,9 +152,11 @@ jobs:
                   after = await client.subnets.metagraph(netuid=2)
                   for row in evidence:
                       neuron = after.by_hotkey(row['hotkey'])
-                      row['stake_tao_after'] = float(neuron.stake_tao)
+                      if neuron is None:
+                          raise SystemExit(f"validator disappeared after stake: {row['wallet']}")
+                      row['total_stake_after'] = balance_evidence(neuron.total_stake)
                       row['validator_permit_before_epoch'] = bool(neuron.validator_permit)
-                      if row['stake_tao_after'] <= row['stake_tao_before']:
+                      if int(neuron.total_stake.rao) <= int(row['total_stake_before']['rao']):
                           raise SystemExit(f"stake weight did not increase for {row['wallet']}")
               print(json.dumps(evidence, indent=2, default=str))
           asyncio.run(main())
@@ -163,6 +168,14 @@ jobs:
           python - <<'PY' | tee /tmp/m2-validator-permits.json
           import asyncio, json
           import bittensor as bt
+
+          def balance_evidence(balance):
+              return {
+                  'rao': int(balance.rao),
+                  'amount': float(balance.amount),
+                  'netuid': int(balance.netuid),
+                  'unit': str(balance.unit),
+              }
 
           async def main():
               wallets = [
@@ -177,11 +190,13 @@ jobs:
                       rows = []
                       for wallet in wallets:
                           n = mg.by_hotkey(wallet.hotkey.ss58_address)
+                          if n is None:
+                              raise SystemExit(f'validator disappeared while waiting for permit: {wallet.name}')
                           rows.append({
                               'wallet': wallet.name,
                               'uid': int(n.uid),
                               'hotkey': wallet.hotkey.ss58_address,
-                              'stake_tao': float(n.stake_tao),
+                              'total_stake': balance_evidence(n.total_stake),
                               'validator_permit': bool(n.validator_permit),
                               'last_update': int(n.last_update),
                           })
@@ -317,12 +332,14 @@ jobs:
                   final = await client.subnets.metagraph(netuid=2)
                   miners = []
                   for n in final.neurons:
-                      if getattr(n, 'axon', None) is None or int(getattr(n.axon, 'port', 0) or 0) == 0:
+                      if not n.axon:
                           continue
                       miners.append({
                           'uid': int(n.uid),
+                          'endpoint': str(n.axon),
                           'incentive': float(n.incentive),
-                          'emission': float(n.emission),
+                          'emission_rao': int(n.emission.rao),
+                          'emission_amount': float(n.emission.amount),
                       })
                   if not miners:
                       raise SystemExit('no served miners found after Yuma epoch')
