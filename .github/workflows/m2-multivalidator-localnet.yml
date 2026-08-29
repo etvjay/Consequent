@@ -94,7 +94,7 @@ jobs:
           done
           btcli query metagraph --netuid 2 --network local --json | tee /tmp/m2-metagraph-registered.json
 
-      - name: Stake validator hotkeys above local permit threshold
+      - name: Stake non-owner validators with bounded slippage
         run: |
           set -euo pipefail
           python - <<'PY' | tee /tmp/m2-staking.json
@@ -102,22 +102,35 @@ jobs:
           import bittensor as bt
 
           async def main():
-              names = ['consequent-m2-owner', 'consequent-m2-validator-1', 'consequent-m2-validator-2']
+              # Validator permits are proven from the resulting live metagraph, not
+              # from a hard-coded mainnet stake assumption. On a fresh localnet the
+              # runtime threshold is normally zero and max_validators exceeds this
+              # nine-neuron fixture, so a small positive stake is sufficient while
+              # avoiding a destructive swap against the young subnet pool.
+              names = ['consequent-m2-validator-1', 'consequent-m2-validator-2']
               evidence = []
               async with bt.Subtensor('local') as client:
+                  before = await client.subnets.metagraph(netuid=2)
                   for name in names:
                       wallet = bt.Wallet(name=name, hotkey='default')
+                      prior = before.by_hotkey(wallet.hotkey.ss58_address)
                       intent = bt.AddStake(
                           hotkey_ss58=wallet.hotkey.ss58_address,
                           netuid=2,
-                          amount_tao=1500.0,
+                          amount_tao=10.0,
+                          slippage_protection=True,
+                          rate_tolerance=0.05,
                       )
                       plan = await client.plan(intent, wallet)
                       result = await client.execute(intent, wallet)
-                      evidence.append({
+                      row = {
                           'wallet': name,
                           'hotkey': wallet.hotkey.ss58_address,
+                          'stake_tao_before': float(prior.stake_tao),
                           'plan': str(plan),
+                          'amount_tao': 10.0,
+                          'slippage_protection': True,
+                          'rate_tolerance': 0.05,
                           'success': bool(result.success),
                           'block_hash': getattr(result, 'block_hash', None),
                           'extrinsic_id': getattr(result, 'extrinsic_id', None),
@@ -126,10 +139,20 @@ jobs:
                               'name': str(result.error.name),
                               'remediation': str(result.error.remediation),
                           },
-                      })
+                      }
+                      evidence.append(row)
                       if not result.success:
                           print(json.dumps(evidence, indent=2, default=str))
                           raise SystemExit(f'AddStake failed for {name}')
+                      await asyncio.sleep(12.5)
+
+                  after = await client.subnets.metagraph(netuid=2)
+                  for row in evidence:
+                      neuron = after.by_hotkey(row['hotkey'])
+                      row['stake_tao_after'] = float(neuron.stake_tao)
+                      row['validator_permit_before_epoch'] = bool(neuron.validator_permit)
+                      if row['stake_tao_after'] <= row['stake_tao_before']:
+                          raise SystemExit(f"stake weight did not increase for {row['wallet']}")
               print(json.dumps(evidence, indent=2, default=str))
           asyncio.run(main())
           PY
@@ -158,6 +181,7 @@ jobs:
                               'wallet': wallet.name,
                               'uid': int(n.uid),
                               'hotkey': wallet.hotkey.ss58_address,
+                              'stake_tao': float(n.stake_tao),
                               'validator_permit': bool(n.validator_permit),
                               'last_update': int(n.last_update),
                           })
