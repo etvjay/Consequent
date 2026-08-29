@@ -2,6 +2,12 @@ name: m2-multivalidator-localnet
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/m2-multivalidator-localnet.yml'
+      - 'scripts/m2_multivalidator_chain.py'
+      - 'scripts/localnet_ready.py'
+      - 'pyproject.toml'
 
 permissions:
   contents: read
@@ -29,15 +35,15 @@ jobs:
           set -euo pipefail
           docker run -d --rm --name consequent-m2-chain \
             -p 9944:9944 -p 9945:9945 \
-            ghcr.io/raofoundation/subtensor-localnet:devnet False
-          for i in $(seq 1 90); do
-            if btcli query metagraph --netuid 1 --network local --json >/tmp/m2-root-metagraph.json 2>/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs consequent-m2-chain
-          exit 1
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
+          # Chain readiness must not assume a particular bootstrap subnet exists.
+          # The evidence contract begins once Subtensor is producing queryable blocks.
+          python scripts/localnet_ready.py \
+            --network local \
+            --attempts 90 \
+            --poll-seconds 2 \
+            --min-block 1 \
+            --output /tmp/m2-chain-ready.json
 
       - name: Create and fund owner, validators, and miners
         run: |
@@ -327,7 +333,7 @@ jobs:
           name: consequent-m2-multivalidator-localnet-evidence
           if-no-files-found: warn
           path: |
-            /tmp/m2-root-metagraph.json
+            /tmp/m2-chain-ready.json
             /tmp/m2-metagraph-registered.json
             /tmp/m2-staking.json
             /tmp/m2-validator-permits.json
@@ -342,6 +348,7 @@ jobs:
       - name: Diagnostics
         if: failure()
         run: |
+          cat /tmp/m2-chain-ready.json 2>/dev/null || true
           cat /tmp/m2-staking.json 2>/dev/null || true
           cat /tmp/m2-validator-permits.json 2>/dev/null || true
           cat /tmp/m2-validator-row-*.json 2>/dev/null || true
