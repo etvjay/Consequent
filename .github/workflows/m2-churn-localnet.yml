@@ -155,8 +155,17 @@ jobs:
                   serving_rate_limit = int(field(hp, 'serving_rate_limit'))
                   mg = await client.subnets.metagraph(netuid=2)
                   neuron = mg.by_hotkey(wallet.hotkey.ss58_address)
-                  axon = neuron.axon
-                  last_serve_block = int(field(axon, 'block'))
+                  if neuron is None:
+                      raise SystemExit('churn miner missing from metagraph while reading ServeAxon window')
+
+                  # Bittensor v11 lifts AxonInfo to a typed `ip:port` string on
+                  # MetagraphNeuron.axon. The untouched runtime AxonInfo remains
+                  # in metagraph.raw and carries the authoritative serve block.
+                  raw_axons = list(mg.raw.get('axons') or [])
+                  if int(neuron.uid) >= len(raw_axons):
+                      raise SystemExit('raw AxonInfo missing for churn miner uid')
+                  axon_record = raw_axons[int(neuron.uid)]
+                  last_serve_block = int(field(axon_record, 'block'))
                   if last_serve_block <= 0:
                       raise SystemExit('expected endpoint A to have a positive chain serve block')
 
