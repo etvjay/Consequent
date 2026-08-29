@@ -9,6 +9,11 @@ description = "Bittensor subnet for behaviorally useful execution memory"
 requires-python = ">=3.10,<3.15"
 dependencies = [
   "bittensor>=11.1,<12",
+  # Bittensor 11.1.0's btcli currently depends on Typer internals. Pin the
+  # exact CLI pair that produced Consequent's authoritative M0/M1 evidence so
+  # evidence lanes cannot silently break when those transitive packages move.
+  "typer==0.27.1",
+  "click==8.4.2",
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "pydantic>=2.8,<3",
