@@ -28,9 +28,12 @@ jobs:
       - name: Start fresh Subtensor localnet with production block timing
         run: |
           set -euo pipefail
+          # This immutable image digest is the environment that produced the
+          # authoritative chain-local Consequent evidence. Do not use the
+          # mutable :devnet tag for an evidence regression lane.
           docker run -d --rm --name consequent-local-chain \
             -p 9944:9944 -p 9945:9945 \
-            ghcr.io/raofoundation/subtensor-localnet:devnet False
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
 
           for i in $(seq 1 90); do
             if btcli query metagraph --netuid 1 --network local --json >/tmp/root-metagraph.json 2>/dev/null; then
@@ -80,7 +83,8 @@ jobs:
         run: |
           set -euo pipefail
           btcli tx register-subnet -w consequent-owner -H default --network local -y
-          # Fresh official localnet contains netuids 0 and 1; the first new subnet is 2.
+          # The pinned authoritative localnet contains netuids 0 and 1; the
+          # first newly registered Consequent subnet is therefore netuid 2.
           btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
 
           # Current Bittensor requires burned registration to be MEV-shielded.
