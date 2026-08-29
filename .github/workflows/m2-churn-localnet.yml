@@ -2,6 +2,15 @@ name: m2-churn-localnet
 
 on:
   pull_request:
+    paths:
+      - '.github/workflows/m2-churn-localnet.yml'
+      - 'scripts/m2_chain_churn.py'
+      - 'scripts/serve_endpoint.py'
+      - 'scripts/localnet_ready.py'
+      - 'miner/**'
+      - 'validator/**'
+      - 'consequent/**'
+      - 'pyproject.toml'
   workflow_dispatch:
 
 permissions:
@@ -10,7 +19,7 @@ permissions:
 jobs:
   endpoint-churn:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -121,6 +130,77 @@ jobs:
           OLD_ENDPOINT="$(python -c "import json; print(json.load(open('/tmp/churn-before.json'))['endpoint'])")"
           echo "CONSEQUENT_OLD_ENDPOINT=$OLD_ENDPOINT" >> "$GITHUB_ENV"
 
+      - name: Wait for chain-owned ServeAxon update window
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/churn-serving-window.json
+          import asyncio
+          import json
+          import sys
+          from collections.abc import Mapping
+
+          import bittensor as bt
+
+          def field(record, name):
+              if isinstance(record, Mapping):
+                  return record[name]
+              return getattr(record, name)
+
+          async def main():
+              wallet = bt.Wallet(name='consequent-churn-miner', hotkey='default')
+              async with bt.Subtensor('local') as client:
+                  hp = await client.subnets.subnet_hyperparameters(netuid=2)
+                  if hp is None:
+                      raise SystemExit('subnet hyperparameters unavailable while waiting for ServeAxon window')
+                  serving_rate_limit = int(field(hp, 'serving_rate_limit'))
+                  mg = await client.subnets.metagraph(netuid=2)
+                  neuron = mg.by_hotkey(wallet.hotkey.ss58_address)
+                  axon = neuron.axon
+                  last_serve_block = int(field(axon, 'block'))
+                  if last_serve_block <= 0:
+                      raise SystemExit('expected endpoint A to have a positive chain serve block')
+
+                  # Use one block of safety beyond the configured interval. This avoids
+                  # encoding an equality-edge assumption into the evidence harness.
+                  target_block = last_serve_block + serving_rate_limit + 1
+                  initial_block = int(mg.block)
+                  initial_remaining = max(0, target_block - initial_block)
+                  if initial_remaining > 80:
+                      raise SystemExit(
+                          f'ServeAxon window requires {initial_remaining} blocks, above bounded churn wait'
+                      )
+
+                  current_block = initial_block
+                  while current_block < target_block:
+                      print(
+                          json.dumps({
+                              'event': 'M2_SERVE_RATE_LIMIT_WAIT',
+                              'current_block': current_block,
+                              'last_serve_block': last_serve_block,
+                              'serving_rate_limit': serving_rate_limit,
+                              'target_block': target_block,
+                              'remaining_blocks': target_block - current_block,
+                          }, sort_keys=True),
+                          file=sys.stderr,
+                          flush=True,
+                      )
+                      await asyncio.sleep(12.5)
+                      current_block = int(await client.block())
+
+                  print(json.dumps({
+                      'state': 'SERVING_RATE_LIMIT_WINDOW_OPEN',
+                      'hotkey': wallet.hotkey.ss58_address,
+                      'last_serve_block': last_serve_block,
+                      'serving_rate_limit': serving_rate_limit,
+                      'initial_block': initial_block,
+                      'initial_remaining_blocks': initial_remaining,
+                      'target_block': target_block,
+                      'legal_republish_block': current_block,
+                  }, indent=2, sort_keys=True))
+
+          asyncio.run(main())
+          PY
+
       - name: Restart same hotkey on endpoint B and republish
         run: |
           set -euo pipefail
@@ -184,6 +264,7 @@ jobs:
             /tmp/churn-chain-ready.json
             /tmp/churn-metagraph-registered.json
             /tmp/churn-before.json
+            /tmp/churn-serving-window.json
             /tmp/churn-serve-a.txt
             /tmp/churn-serve-b.txt
             /tmp/churn-result.json
@@ -195,6 +276,7 @@ jobs:
         run: |
           cat /tmp/churn-chain-ready.json 2>/dev/null || true
           cat /tmp/churn-before.json 2>/dev/null || true
+          cat /tmp/churn-serving-window.json 2>/dev/null || true
           cat /tmp/churn-result.json 2>/dev/null || true
           cat /tmp/churn-miner-a.log 2>/dev/null || true
           cat /tmp/churn-miner-b.log 2>/dev/null || true
