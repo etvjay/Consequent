@@ -28,22 +28,15 @@ jobs:
       - name: Start fresh Subtensor localnet with production block timing
         run: |
           set -euo pipefail
-          # This immutable image digest is the environment that produced the
-          # authoritative chain-local Consequent evidence. Do not use the
-          # mutable :devnet tag for an evidence regression lane.
+          # Pin the immutable image used by the authoritative chain-local proof.
+          # Readiness is chain-level: bootstrap subnet topology is not part of
+          # Consequent's evidence contract.
           docker run -d --rm --name consequent-local-chain \
             -p 9944:9944 -p 9945:9945 \
             ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
-
-          for i in $(seq 1 90); do
-            if btcli query metagraph --netuid 1 --network local --json >/tmp/root-metagraph.json 2>/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-
-          docker logs consequent-local-chain
-          exit 1
+          python scripts/localnet_ready.py \
+            --network local --attempts 90 --poll-seconds 2 --min-block 1 \
+            --output /tmp/localnet-chain-ready.json
 
       - name: Create disposable role wallets
         run: |
@@ -208,9 +201,8 @@ jobs:
       - name: Configure deterministic M0 weight visibility
         run: |
           set -euo pipefail
-          # New subnets default to commit-reveal. M0 disables only that owner-
-          # settable visibility delay so SetWeights can be read back deterministically.
-          # The runtime-owned weights_rate_limit remains unchanged and must be obeyed.
+          # M0 disables only the owner-settable visibility delay so SetWeights
+          # can be read back deterministically. Runtime-owned rate limits remain live.
           btcli tx set-hyperparameter \
             --netuid 2 \
             --name commit_reveal_weights_enabled \
@@ -251,7 +243,7 @@ jobs:
           name: consequent-localnet-evidence
           if-no-files-found: warn
           path: |
-            /tmp/root-metagraph.json
+            /tmp/localnet-chain-ready.json
             /tmp/neuron-registration.json
             /tmp/advertised-ip.txt
             /tmp/consequent-metagraph-before.json
@@ -266,6 +258,7 @@ jobs:
       - name: Show diagnostics on failure
         if: failure()
         run: |
+          cat /tmp/localnet-chain-ready.json 2>/dev/null || true
           cat /tmp/neuron-registration.json 2>/dev/null || true
           cat /tmp/advertised-ip.txt 2>/dev/null || true
           cat /tmp/serve-axon.txt 2>/dev/null || true
