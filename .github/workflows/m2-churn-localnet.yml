@@ -1,6 +1,7 @@
 name: m2-churn-localnet
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -29,7 +30,7 @@ jobs:
           set -euo pipefail
           docker run -d --rm --name consequent-m2-churn-chain \
             -p 9944:9944 -p 9945:9945 \
-            ghcr.io/raofoundation/subtensor-localnet:devnet False
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
           for i in $(seq 1 90); do
             if btcli query metagraph --netuid 1 --network local --json >/tmp/churn-root-metagraph.json 2>/dev/null; then
               exit 0
