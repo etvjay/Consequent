@@ -21,11 +21,14 @@ M2 exit condition: no unresolved `CRITICAL` finding and no unbounded `HIGH` find
 
 ## Current evidence checkpoint
 
-Current M2 head: `769178981e18bbf5411e6c7ebaebe3ccaa9f3ae7`.
+Current M2 head: `b94f008abe9fba838f0d5a35caf6afd586397567`.
 
-Current-head CI: **PASS**, GitHub Actions `ci` run #146 / `32923398487`.
-
-The latest M1/localnet regressions for this head are still running. Therefore changes introduced after the authoritative M1 closure are classified as `CI_PASS` until a fresh chain-local regression succeeds. The authoritative historical M1 closure remains run #1 / `32906478860`.
+Current-head CI and chain-local regressions are **PASS**: GitHub Actions `ci`
+run #164 / `33577658164`, `localnet` #93 / `33577658111`, `m1-localnet` #51 /
+`33577658106`, and endpoint-churn #12 / `33577658110`. The authoritative
+historical M1 closure remains run #1 / `32906478860`; these fresh runs are
+regressions of the current head, not a replacement for its evidence artifact.
+The independent-validator M2-V1 run #6 / `33577658140` remains in progress.
 
 ---
 
@@ -44,7 +47,7 @@ The latest M1/localnet regressions for this head are still running. Therefore ch
 | M2-09 | policy violation compensated by uplift | CRITICAL | any policy violation hard-vetoes score | scoring tests + authoritative M1 | `CHAIN_LOCAL_PASS_ORIGINAL_M1 / CURRENT_RUNTIME_CHAIN_REGRESSION_PENDING` |
 | M2-10 | sudden score gaming / selective evaluation | HIGH | audit signals escalate deep evaluation; budgeted staged planner prioritizes risk plus private random-audit floor | audit policy, scheduler, staged-evaluation tests | `CI_PASS / LIVE_COST_MEASUREMENT_PENDING` |
 | M2-11 | repeated downtime / stale winner | HIGH | rolling economic state feeds weight construction; repeated failures, stale evidence, old evaluator epochs, identity mismatch, and unevaluated endpoint changes become ineligible | score-state + rolling-economics tests | `CI_PASS / ROLLING_CHAIN_SETTLEMENT_NOT_RUN` |
-| M2-12 | miner churn / endpoint changes / UID reuse | MEDIUM | current metagraph only; score binds UID+hotkey; recycled UID cannot inherit score; endpoint move must be re-evaluated | churn identity tests; manual `m2-churn-localnet` workflow | `CI_PASS / CHAIN_CHURN_NOT_RUN` |
+| M2-12 | miner churn / endpoint changes / UID reuse | MEDIUM | current metagraph only; score binds UID+hotkey; recycled UID cannot inherit score; endpoint move must be re-evaluated | churn identity tests; `m2-churn-localnet` run #12 / artifact `9827546184` | `CHAIN_LOCAL_PASS` |
 | M2-13 | miner-validator collusion / leaked holdout | CRITICAL | honest admission rejects leaked hidden-instance conditions; raw leaked advantage fails to transfer to independent seeds; minority malicious validator row is clipped in Yuma reference model | collusion pressure tests | `CI_PASS_REFERENCE / MULTI_VALIDATOR_CHAIN_NOT_RUN` |
 | M2-14 | validator copying / independence failure | HIGH | identical rows are weak audit evidence; shared private challenge/evaluation commitments are stronger telemetry; no automatic reward penalty | validator audit tests | `CI_PASS / CHAIN_EVIDENCE_NOT_RUN` |
 | M2-15 | evaluator-version drift | HIGH | old evaluator score is immediately economically ineligible; first new-version success starts a fresh score epoch; rolling weight construction enforces it | score-state + rolling-economics tests | `CI_PASS / ROLLING_CHAIN_SETTLEMENT_NOT_RUN` |
@@ -145,7 +148,7 @@ Commit-reveal is disabled only for this observable-row fixture.
 
 State: `NOT_RUN`.
 
-### M2-C1 — endpoint churn
+### M2-C1 — endpoint churn — passed
 
 Workflow: `.github/workflows/m2-churn-localnet.yml` (`workflow_dispatch` only).
 
@@ -156,7 +159,13 @@ Required evidence:
 - refreshed metagraph no longer treats A as canonical;
 - signed validator traffic succeeds at B.
 
-State: `NOT_RUN`.
+State: `CHAIN_LOCAL_PASS`.
+
+Evidence: GitHub Actions run `33577658110` / #12, artifact `9827546184`,
+digest `sha256:87947c466473604e422398037c236a83add6ae281166bd2e0ac69c5199e19f32`.
+The same hotkey was republished only after the chain-owned ServeAxon window;
+the refreshed metagraph endpoint and signed challenge response both followed
+endpoint B.
 
 ### M2-V2 — commit-reveal-on settlement
 
@@ -174,22 +183,20 @@ State: `NOT_RUN`.
 
 1. actual non-owner multi-validator chain behavior is unproven;
 2. commit-reveal-on settlement is unproven;
-3. endpoint churn workflow is implemented but unrun;
-4. rolling multi-round economic state has not yet been used in an authoritative chain settlement loop;
-5. validator evaluation cost is bounded in a reference planner but not measured under realistic deep execution;
-6. action tokens are declarative-only, but a production executor capability/action registry is not yet frozen as an explicit protocol field;
-7. majority validator economic capture is a Bittensor-system security boundary, not locally solvable by Consequent;
-8. public Bittensor testnet mutation remains `NOT_RUN`.
+3. rolling multi-round economic state has not yet been used in an authoritative chain settlement loop;
+4. validator evaluation cost is bounded in a reference planner but not measured under realistic deep execution;
+5. action tokens are declarative-only, but a production executor capability/action registry is not yet frozen as an explicit protocol field;
+6. majority validator economic capture is a Bittensor-system security boundary, not locally solvable by Consequent;
+7. public Bittensor testnet mutation remains `NOT_RUN`.
 
 ---
 
 ## Next pressure tranche
 
-1. wait for the current-head M1/localnet regression and inspect any semantic-ordering failure;
-2. run M2-C1 endpoint churn manually and retain its artifact;
-3. run M2-V1 multi-validator localnet and verify real permits + post-epoch chain incentives;
-4. build M2-V2 commit-reveal-on settlement proof;
-5. execute a multi-round rolling-weight chain/simulation harness with disappearance, endpoint move and evaluator migration;
-6. measure actual canary/deep evaluation cost and set a validator economic budget;
-7. freeze a production capability/action vocabulary contract without conflating it with source provenance;
-8. only then reassess M2 exit readiness and M3 consumer integration.
+1. inspect the current-head chain-local regression artifacts for any semantic-ordering failure;
+2. complete M2-V1 multi-validator localnet and verify real permits + post-epoch chain incentives;
+3. build M2-V2 commit-reveal-on settlement proof;
+4. execute a multi-round rolling-weight chain/simulation harness with disappearance, endpoint move and evaluator migration;
+5. measure actual canary/deep evaluation cost and set a validator economic budget;
+6. freeze a production capability/action vocabulary contract without conflating it with source provenance;
+7. only then reassess M2 exit readiness and M3 consumer integration.

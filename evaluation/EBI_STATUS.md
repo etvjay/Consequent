@@ -58,11 +58,11 @@ This closes M1. It does not prove multiple independent validators, production co
 
 ## M2 current checkpoint
 
-Current implementation head at this checkpoint: `769178981e18bbf5411e6c7ebaebe3ccaa9f3ae7`.
+Current implementation head at this checkpoint: `b94f008abe9fba838f0d5a35caf6afd586397567`.
 
-Current-head CI: **PASS** — `ci` run #146 / `32923398487`.
-
-The current-head M1/localnet regressions are still running, so new runtime semantics after the authoritative M1 closure remain `CI_PASS` rather than fresh `CHAIN_LOCAL_PASS` until those jobs complete.
+Current-head CI and chain-local regressions are **PASS** — `ci` #164 /
+`33577658164`, `localnet` #93 / `33577658111`, `m1-localnet` #51 /
+`33577658106`, and `m2-churn-localnet` #12 / `33577658110`.
 
 M2 controls now implemented and CI-proven include:
 - admission before causal scoring;
@@ -101,7 +101,12 @@ State: `NOT_RUN`.
 
 It is designed to prove a same-hotkey ServeAxon endpoint move is reflected by refreshed metagraph discovery and signed traffic follows the new canonical endpoint.
 
-State: `NOT_RUN`.
+State: `CHAIN_LOCAL_PASS` — GitHub Actions run `33577658110` / #12, artifact
+`9827546184`, digest
+`sha256:87947c466473604e422398037c236a83add6ae281166bd2e0ac69c5199e19f32`.
+The same registered hotkey moved from endpoint A to endpoint B after the live
+ServeAxon rate-limit window; current metagraph discovery and signed traffic
+followed endpoint B.
 
 ### M2-V2 — commit-reveal-on settlement
 
@@ -114,7 +119,7 @@ State: `NOT_RUN`.
 M2 is **not closed**. Remaining blockers include:
 - non-owner multi-validator chain proof;
 - commit-reveal-on settlement;
-- real chain endpoint churn;
+- ~~real chain endpoint churn~~ (M2-C1 `CHAIN_LOCAL_PASS`);
 - rolling multi-round chain settlement;
 - realistic validator deep-evaluation cost measurement;
 - explicit production executor action/capability vocabulary contract;

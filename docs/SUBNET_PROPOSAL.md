@@ -257,7 +257,7 @@ facts.
 | Signed HTTP transport exists | `CI_PASS` / local round-trip coverage |
 | Six-miner competitive local chain loop | `CHAIN_LOCAL_PASS` (M1) |
 | UID weights accepted and read back locally | `CHAIN_LOCAL_PASS` (M1) |
-| Endpoint churn workflow | `CHAIN_LOCAL_PASS` in current GitHub Actions run |
+| Endpoint churn workflow | `CHAIN_LOCAL_PASS` — Actions run #12 / `33577658110`, artifact `9827546184` |
 | Independent non-owner validator rows and Yuma settlement | `FAILED` at current M2 row-submission step |
 | Commit-reveal-on settlement | `UNPROVEN` |
 | Public Bittensor testnet deployment | `NOT_RUN` |

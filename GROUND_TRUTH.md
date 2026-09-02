@@ -325,6 +325,10 @@ Consequent may later interface with capability markets, but it must not silently
 
 As of this freeze:
 
+> The baseline below was frozen on 2026-08-24. The evidence revision after
+> this section records chain-local results earned since then; it does not
+> upgrade any claim to `TESTNET_PASS`.
+
 ### Proven
 
 - Public repository exists: `etvjay/Consequent`.
@@ -357,6 +361,20 @@ As of this freeze:
 - final hackathon submission.
 
 No statement in the README, pitch or demo may imply these are complete until evidence exists.
+
+### Evidence revision — 2026-09-02
+
+- The published `bootstrap/m0` head `b94f008abe9fba838f0d5a35caf6afd586397567`
+  passed CI, the M1 chain-local regression, and the endpoint-churn workflow.
+- M2-C1 endpoint churn is now `CHAIN_LOCAL_PASS`: GitHub Actions run
+  `33577658110` / #12, artifact `9827546184`, digest
+  `sha256:87947c466473604e422398037c236a83add6ae281166bd2e0ac69c5199e19f32`.
+  The same registered hotkey moved from `10.1.0.237:8091` to
+  `10.1.0.237:8191`; refreshed metagraph discovery and signed traffic used the
+  new endpoint after the live ServeAxon rate-limit window.
+- M2-V1 run `33577658140` / #6 is still in progress. No independent-validator
+  or Yuma settlement claim is promoted until its rows and post-epoch outcome
+  are captured.
 
 ---
 

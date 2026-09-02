@@ -75,6 +75,11 @@ Implemented pressure controls include:
 - 100-private-seed validator-dispersion harness;
 - manual M2-V1 chain workflow for non-owner validator permits, independent rows, and actual post-epoch Yuma outcome.
 
+The endpoint-churn pressure lane is now chain-local proven: run #12 /
+`33577658110`, artifact `9827546184`. It moved one registered hotkey through
+the live ServeAxon rate-limit window and verified refreshed discovery plus
+signed traffic at the new endpoint.
+
 The manual M2-V1 workflow is **designed, not yet evidence-backed**. It must not be represented as a passed multi-validator chain test until an actual run succeeds.
 
 ## Evidence boundaries
@@ -84,7 +89,7 @@ Public Bittensor testnet mutation/deployment is still `NOT_RUN`.
 Consequent has **not yet proven**:
 - multiple independent non-owner validators on chain;
 - commit-reveal-on settlement end-to-end;
-- endpoint churn/restart behavior;
+- ~~endpoint churn/restart behavior~~ on chain-local infrastructure (M2-C1 passed; public testnet still unrun);
 - miner-validator collusion resistance on chain;
 - public testnet registration/serving/weights;
 - external consumer integration;
