@@ -210,6 +210,17 @@ A Python dictionary that sums to 1 is not testnet weight evidence.
 
 Before live mutation, prefer plan/dry-run paths when available and test against local/test networks before mainnet.
 
+### Hyperparameter read shape
+
+The official `get_subnet_hyperparams_v3` runtime read is forward-compatible,
+but its returned field set is runtime/version-dependent. Current localnet
+responses expose the consensus fields needed by Consequent while omitting
+`bonds_penalty`, even though that parameter exists in the broader
+hyperparameter model. Consequent must preserve an omitted optional field as
+unknown and must not invent a default that could be mistaken for chain
+evidence. A fresh chain run is required before treating the resulting
+consensus-policy record as complete.
+
 ---
 
 ## 4. Consequent product ground truth

@@ -61,6 +61,26 @@ class FakeMappingSubnets:
         }
 
 
+class FakeRuntimeSubsetSubnets:
+    async def subnet_hyperparameters(self, *, netuid: int):
+        assert netuid == 42
+        # Mirrors the current get_subnet_hyperparams_v3 shape, which does not
+        # expose every documented hyperparameter on every runtime.
+        return {
+            "tempo": 360,
+            "kappa": 32767,
+            "max_validators": 64,
+            "activity_cutoff_factor": 13889,
+            "bonds_moving_avg": 900000,
+            "yuma_version": 3,
+            "liquid_alpha_enabled": False,
+        }
+
+
+class FakeRuntimeSubsetClient:
+    subnets = FakeRuntimeSubsetSubnets()
+
+
 class FakeMappingClient:
     subnets = FakeMappingSubnets()
 
@@ -111,6 +131,14 @@ async def test_read_consensus_policy_accepts_v3_mapping_shape():
     assert policy.bonds_penalty == pytest.approx(32768 / 65535)
     assert policy.yuma_version == 3
     assert policy.liquid_alpha_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_read_consensus_policy_preserves_unexposed_optional_bonds_penalty():
+    policy = await read_consensus_policy(client=FakeRuntimeSubsetClient(), netuid=42)
+    assert policy.yuma_version == 3
+    assert policy.bonds_penalty_raw is None
+    assert policy.bonds_penalty is None
 
 
 def test_remaining_weight_rate_limit_blocks_tracks_runtime_rule():

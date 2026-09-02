@@ -19,16 +19,19 @@ async def plan_weights(*, client, wallet, netuid: int, weights: dict[int, float]
 
 
 async def submit_weights(*, client, wallet, netuid: int, weights: dict[int, float], version_key: int | None = None):
-    """Submit weights only after checking the current subnet version gate.
+    """Plan, then submit weights after checking live subnet constraints.
 
-    The Bittensor v11 SetWeights intent performs its own preflight for chain-side
-    constraints such as non-zero weight count, clipping, rate limits and
-    commit-reveal routing. Consequent additionally reads the subnet policy so
-    the required version key cannot be ignored.
+    ``execute`` also re-plans internally in Bittensor v11. The explicit plan here
+    is intentional: callers get a non-mutating policy/chain preflight at the
+    Consequent boundary before the transaction is allowed to proceed, while the
+    SDK's execute-time re-plan remains the final race-safe check.
     """
     import bittensor as bt
 
     policy = await read_weight_policy(client=client, netuid=netuid)
     resolved_version = required_version_key(policy, version_key)
     intent = bt.SetWeights(netuid=netuid, weights=weights, version_key=resolved_version)
+    plan = await client.plan(intent, wallet)
+    if not plan.ok:
+        raise bt.PolicyError(plan.violations)
     return await client.execute(intent, wallet)

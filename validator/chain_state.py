@@ -23,7 +23,10 @@ class SubnetConsensusPolicy:
     activity_cutoff_factor: int
     effective_activity_cutoff_blocks: int
     bonds_moving_avg: int
-    bonds_penalty_raw: int
+    # Some current Subtensor runtimes do not expose bonds_penalty through the
+    # forward-compatible get_subnet_hyperparams_v3 runtime API. None means the
+    # value is not observable through this read, not that it is zero or one.
+    bonds_penalty_raw: int | None
     yuma_version: int
     liquid_alpha_enabled: bool
 
@@ -32,7 +35,9 @@ class SubnetConsensusPolicy:
         return self.kappa_raw / 65535.0
 
     @property
-    def bonds_penalty(self) -> float:
+    def bonds_penalty(self) -> float | None:
+        if self.bonds_penalty_raw is None:
+            return None
         return self.bonds_penalty_raw / 65535.0
 
 
@@ -69,6 +74,21 @@ def _field_any(record: Any, *names: str) -> Any:
             return getattr(record, name)
     joined = ", ".join(names)
     raise RuntimeError(f"subnet hyperparameters missing required field variant: {joined}")
+
+
+def _optional_field(record: Any, *names: str) -> Any | None:
+    """Read an optional field without manufacturing chain state.
+
+    The v3 hyperparameter runtime API is forward-compatible, but its field set
+    is runtime/version-dependent. Optional economic parameters must therefore
+    remain explicitly unknown when that API does not expose them.
+    """
+    for name in names:
+        if isinstance(record, Mapping) and name in record:
+            return record[name]
+        if not isinstance(record, Mapping) and hasattr(record, name):
+            return getattr(record, name)
+    return None
 
 
 async def _read_hyperparameters(*, client, netuid: int) -> Any:
@@ -120,7 +140,11 @@ async def read_consensus_policy(*, client, netuid: int) -> SubnetConsensusPolicy
         activity_cutoff_factor=activity_factor,
         effective_activity_cutoff_blocks=effective_cutoff,
         bonds_moving_avg=int(_field(hp, "bonds_moving_avg")),
-        bonds_penalty_raw=int(_field(hp, "bonds_penalty")),
+        bonds_penalty_raw=(
+            None
+            if (raw_bonds_penalty := _optional_field(hp, "bonds_penalty")) is None
+            else int(raw_bonds_penalty)
+        ),
         yuma_version=yuma_version,
         liquid_alpha_enabled=bool(_field(hp, "liquid_alpha_enabled")),
     )
