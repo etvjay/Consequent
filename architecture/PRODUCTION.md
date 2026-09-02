@@ -216,7 +216,7 @@ M1     six-miner competitive chain-local economic loop            CLOSED
 M2     adversarial mechanism pressure                             ACTIVE
 M2-V1  non-owner multi-validator chain-local/Yuma proof           DESIGNED / IN PROGRESS
 M2-C1  endpoint churn / ServeAxon refresh                        CHAIN_LOCAL_PASS
-M2-V2  commit-reveal-on chain-local settlement                    NOT_RUN
+M2-V2  commit-reveal-on chain-local settlement                    HARNESS READY / NOT_RUN
 M3     external consumer integration                              PENDING
 T1     funded Bittensor public-test deployment                    PENDING
 T2     repeated public-test multi-validator operation             PENDING

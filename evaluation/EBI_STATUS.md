@@ -110,7 +110,11 @@ followed endpoint B.
 
 ### M2-V2 — commit-reveal-on settlement
 
-Production-shaped commit/reveal/application evidence remains to be built and run with commit-reveal enabled.
+Production-shaped proof harness is now implemented in
+`.github/workflows/m2-commit-reveal-localnet.yml` and
+`scripts/m2_commit_reveal_chain.py`. It keeps commit-reveal enabled, records the
+timelocked plan/reveal round, asserts the row is not immediately visible, then
+waits for application and an epoch outcome.
 
 State: `NOT_RUN`.
 

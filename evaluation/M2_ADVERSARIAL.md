@@ -169,6 +169,11 @@ endpoint B.
 
 ### M2-V2 — commit-reveal-on settlement
 
+Production-shaped proof harness is implemented in
+`.github/workflows/m2-commit-reveal-localnet.yml` and
+`scripts/m2_commit_reveal_chain.py`; it keeps commit-reveal enabled and waits
+for delayed row application plus an epoch outcome.
+
 Required evidence:
 - commit-reveal remains enabled;
 - validator submits production-shaped weights through the correct path;
@@ -195,7 +200,7 @@ State: `NOT_RUN`.
 
 1. inspect the current-head chain-local regression artifacts for any semantic-ordering failure;
 2. complete M2-V1 multi-validator localnet and verify real permits + post-epoch chain incentives;
-3. build M2-V2 commit-reveal-on settlement proof;
+3. run the M2-V2 commit-reveal-on settlement proof;
 4. execute a multi-round rolling-weight chain/simulation harness with disappearance, endpoint move and evaluator migration;
 5. measure actual canary/deep evaluation cost and set a validator economic budget;
 6. freeze a production capability/action vocabulary contract without conflating it with source provenance;

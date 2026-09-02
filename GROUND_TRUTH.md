@@ -375,6 +375,10 @@ No statement in the README, pitch or demo may imply these are complete until evi
 - M2-V1 run `33577658140` / #6 is still in progress. No independent-validator
   or Yuma settlement claim is promoted until its rows and post-epoch outcome
   are captured.
+- The M2-V2 commit-reveal proof harness is implemented locally in
+  `.github/workflows/m2-commit-reveal-localnet.yml` and
+  `scripts/m2_commit_reveal_chain.py`, but has not been run and remains
+  `NOT_RUN`.
 
 ---
 

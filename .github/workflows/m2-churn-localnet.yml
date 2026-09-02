@@ -1,16 +1,6 @@
 name: m2-churn-localnet
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/m2-churn-localnet.yml'
-      - 'scripts/m2_chain_churn.py'
-      - 'scripts/serve_endpoint.py'
-      - 'scripts/localnet_ready.py'
-      - 'miner/**'
-      - 'validator/**'
-      - 'consequent/**'
-      - 'pyproject.toml'
   workflow_dispatch:
 
 permissions:

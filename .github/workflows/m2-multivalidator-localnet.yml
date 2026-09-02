@@ -2,12 +2,6 @@ name: m2-multivalidator-localnet
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/m2-multivalidator-localnet.yml'
-      - 'scripts/m2_multivalidator_chain.py'
-      - 'scripts/localnet_ready.py'
-      - 'pyproject.toml'
 
 permissions:
   contents: read
