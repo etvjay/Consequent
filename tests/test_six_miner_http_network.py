@@ -32,12 +32,16 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _wait_ready(port: int, timeout: float = 10.0) -> None:
+def _wait_ready(port: int, timeout: float = 30.0) -> None:
     deadline = time.monotonic() + timeout
     url = f"http://127.0.0.1:{port}/health"
     while time.monotonic() < deadline:
         try:
-            response = httpx.get(url, timeout=0.5)
+            # Loopback readiness probes must never be sent through a
+            # workstation/CI proxy. Some runners expose an ALL_PROXY
+            # SOCKS URL without installing socksio, which otherwise makes
+            # a healthy local miner look unavailable.
+            response = httpx.get(url, timeout=0.5, trust_env=False)
             if response.status_code == 200:
                 return
         except Exception:

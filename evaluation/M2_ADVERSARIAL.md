@@ -21,7 +21,7 @@ M2 exit condition: no unresolved `CRITICAL` finding and no unbounded `HIGH` find
 
 ## Current evidence checkpoint
 
-Current M2 head: `b94f008abe9fba838f0d5a35caf6afd586397567`.
+Current M2 head: `b1bc8c0ba4dc6514aea8349d9c407167dfe81da9`.
 
 Current-head CI and chain-local regressions are **PASS**: GitHub Actions `ci`
 run #164 / `33577658164`, `localnet` #93 / `33577658111`, `m1-localnet` #51 /

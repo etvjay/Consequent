@@ -258,16 +258,17 @@ facts.
 | Six-miner competitive local chain loop | `CHAIN_LOCAL_PASS` (M1) |
 | UID weights accepted and read back locally | `CHAIN_LOCAL_PASS` (M1) |
 | Endpoint churn workflow | `CHAIN_LOCAL_PASS` — Actions run #12 / `33577658110`, artifact `9827546184` |
-| Independent non-owner validator rows and Yuma settlement | `FAILED` at current M2 row-submission step |
+| Independent non-owner validator rows and Yuma settlement | `IN_PROGRESS` — M2-V1 run #6 has submitted all three rows; post-tempo Yuma readback is pending |
 | Commit-reveal-on settlement | `UNPROVEN` |
 | Public Bittensor testnet deployment | `NOT_RUN` |
 | External BMP consumer | `UNPROVEN` |
 
-The failed M2 run reached the row-submission step but stopped before the first
-row was written because the local Subtensor `get_subnet_hyperparams_v3` response
-did not expose `bonds_penalty`. The compatibility fix preserves that value as
-explicitly unknown instead of fabricating a default; a fresh workflow run is
-still required to earn the chain evidence.
+Prior M2 run #5 reached the row-submission step but stopped before the first row
+was written because the local Subtensor `get_subnet_hyperparams_v3` response did
+not expose `bonds_penalty`. The compatibility fix preserves that value as
+explicitly unknown instead of fabricating a default. M2-V1 run #6 has since
+completed permit-gated setup and all three independent row submissions; its
+post-tempo Yuma artifact is still required before this claim can close.
 
 The current code is on [`bootstrap/m0`](https://github.com/etvjay/Consequent/tree/bootstrap/m0).
 The default `main` branch is not yet the implementation branch. The open draft

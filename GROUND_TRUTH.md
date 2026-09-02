@@ -364,7 +364,7 @@ No statement in the README, pitch or demo may imply these are complete until evi
 
 ### Evidence revision — 2026-09-02
 
-- The published `bootstrap/m0` head `b94f008abe9fba838f0d5a35caf6afd586397567`
+- The published `bootstrap/m0` head `b1bc8c0ba4dc6514aea8349d9c407167dfe81da9`
   passed CI, the M1 chain-local regression, and the endpoint-churn workflow.
 - M2-C1 endpoint churn is now `CHAIN_LOCAL_PASS`: GitHub Actions run
   `33577658110` / #12, artifact `9827546184`, digest
@@ -375,7 +375,7 @@ No statement in the README, pitch or demo may imply these are complete until evi
 - M2-V1 run `33577658140` / #6 is still in progress. No independent-validator
   or Yuma settlement claim is promoted until its rows and post-epoch outcome
   are captured.
-- The M2-V2 commit-reveal proof harness is implemented locally in
+- The M2-V2 commit-reveal proof harness is published on `bootstrap/m0` in
   `.github/workflows/m2-commit-reveal-localnet.yml` and
   `scripts/m2_commit_reveal_chain.py`, but has not been run and remains
   `NOT_RUN`.
