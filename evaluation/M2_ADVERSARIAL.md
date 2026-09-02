@@ -21,14 +21,18 @@ M2 exit condition: no unresolved `CRITICAL` finding and no unbounded `HIGH` find
 
 ## Current evidence checkpoint
 
-Current M2 head: `b1bc8c0ba4dc6514aea8349d9c407167dfe81da9`.
+Current M2 implementation is published on the `bootstrap/m0` branch; exact
+evidence commits are recorded with each workflow artifact below.
 
 Current-head CI and chain-local regressions are **PASS**: GitHub Actions `ci`
-run #164 / `33577658164`, `localnet` #93 / `33577658111`, `m1-localnet` #51 /
-`33577658106`, and endpoint-churn #12 / `33577658110`. The authoritative
+run #167 / `33585733352`, `localnet` #96 / `33585733349`, `m1-localnet` #54 /
+`33585733357`, and endpoint-churn #12 / `33577658110`. The authoritative
 historical M1 closure remains run #1 / `32906478860`; these fresh runs are
 regressions of the current head, not a replacement for its evidence artifact.
-The independent-validator M2-V1 run #6 / `33577658140` remains in progress.
+M2-V1 run #6 / `33577658140` passed with artifact `9830668013` (digest
+`sha256:6c0def492691767889e9e10e1ddc74445c7e3fe60e4d07ffaf442d5921298a2b`):
+two non-owner validators held real permits, three independently seeded rows
+settled, and actual post-tempo Yuma selected the expected useful miner.
 
 ---
 
@@ -41,15 +45,15 @@ The independent-validator M2-V1 run #6 / `33577658140` remains in progress.
 | M2-03 | patch-budget / oversized payload abuse | HIGH | request memory budget + serialized-byte ceiling + bounded schema | admission tests | `CI_PASS` |
 | M2-04 | replayed response / wrong challenge binding | HIGH | response challenge ID must exactly match active challenge before admission/scoring; btauth replay/freshness controls remain separate | adversarial runner + auth tests | `CI_PASS` |
 | M2-05 | copied semantic response | HIGH | canonical semantic digest surfaces duplicates without novelty penalty; copied source-bound BMPs remain source-bound across private seeds; equivalent useful BMPs may tie | copycat durability + duplicate telemetry tests | `CI_PASS / CHAIN_COPY_PRESSURE_NOT_RUN` |
-| M2-06 | benchmark / holdout leakage | CRITICAL | hidden tasks never serialized to miner request; hidden-instance values absent from source cannot be laundered into admitted conditions | holdout secrecy + source-grounding + collusion tests | `CI_PASS / MULTI_VALIDATOR_CHAIN_NOT_RUN` |
-| M2-07 | source-instance memorization | HIGH | shifted concealed holdouts + 100-private-seed dispersion gate; useful generalizer must beat source-bound overfit | authoritative M1 + validator dispersion tests | `CHAIN_LOCAL_PASS_ORIGINAL_M1 / CURRENT_RUNTIME_CHAIN_REGRESSION_PENDING` |
-| M2-08 | catastrophic regression hidden by aggregate uplift | CRITICAL | any full-unit behavioral regression (`ΔU <= -1` in MVP utility scale) hard-vetoes reward; smaller regressions remain continuously penalized | scoring regression-compensation test | `CI_PASS / CURRENT_RUNTIME_CHAIN_REGRESSION_PENDING` |
-| M2-09 | policy violation compensated by uplift | CRITICAL | any policy violation hard-vetoes score | scoring tests + authoritative M1 | `CHAIN_LOCAL_PASS_ORIGINAL_M1 / CURRENT_RUNTIME_CHAIN_REGRESSION_PENDING` |
+| M2-06 | benchmark / holdout leakage | CRITICAL | hidden tasks never serialized to miner request; hidden-instance values absent from source cannot be laundered into admitted conditions | holdout secrecy + source-grounding + collusion tests | `CI_PASS / M2_V1_CHAIN_PASS` |
+| M2-07 | source-instance memorization | HIGH | shifted concealed holdouts + 100-private-seed dispersion gate; useful generalizer must beat source-bound overfit | authoritative M1 + validator dispersion tests + M2-V1 rows | `CHAIN_LOCAL_PASS_M1_M2V1` |
+| M2-08 | catastrophic regression hidden by aggregate uplift | CRITICAL | any full-unit behavioral regression (`ΔU <= -1` in MVP utility scale) hard-vetoes reward; smaller regressions remain continuously penalized | scoring regression-compensation test + M2-V1 rows | `CI_PASS / CHAIN_LOCAL_PASS_M2V1` |
+| M2-09 | policy violation compensated by uplift | CRITICAL | any policy violation hard-vetoes score | scoring tests + authoritative M1 + M2-V1 rows | `CHAIN_LOCAL_PASS_M1_M2V1` |
 | M2-10 | sudden score gaming / selective evaluation | HIGH | audit signals escalate deep evaluation; budgeted staged planner prioritizes risk plus private random-audit floor | audit policy, scheduler, staged-evaluation tests | `CI_PASS / LIVE_COST_MEASUREMENT_PENDING` |
 | M2-11 | repeated downtime / stale winner | HIGH | rolling economic state feeds weight construction; repeated failures, stale evidence, old evaluator epochs, identity mismatch, and unevaluated endpoint changes become ineligible | score-state + rolling-economics tests | `CI_PASS / ROLLING_CHAIN_SETTLEMENT_NOT_RUN` |
 | M2-12 | miner churn / endpoint changes / UID reuse | MEDIUM | current metagraph only; score binds UID+hotkey; recycled UID cannot inherit score; endpoint move must be re-evaluated | churn identity tests; `m2-churn-localnet` run #12 / artifact `9827546184` | `CHAIN_LOCAL_PASS` |
-| M2-13 | miner-validator collusion / leaked holdout | CRITICAL | honest admission rejects leaked hidden-instance conditions; raw leaked advantage fails to transfer to independent seeds; minority malicious validator row is clipped in Yuma reference model | collusion pressure tests | `CI_PASS_REFERENCE / MULTI_VALIDATOR_CHAIN_NOT_RUN` |
-| M2-14 | validator copying / independence failure | HIGH | identical rows are weak audit evidence; shared private challenge/evaluation commitments are stronger telemetry; no automatic reward penalty | validator audit tests | `CI_PASS / CHAIN_EVIDENCE_NOT_RUN` |
+| M2-13 | miner-validator collusion / leaked holdout | CRITICAL | honest admission rejects leaked hidden-instance conditions; raw leaked advantage fails to transfer to independent seeds; minority malicious validator row is clipped in Yuma reference model | collusion pressure tests + M2-V1 independent seeds | `CI_PASS_REFERENCE / COLLUSION_CHAIN_NOT_RUN` |
+| M2-14 | validator copying / independence failure | HIGH | identical rows are weak audit evidence; shared private challenge/evaluation commitments are stronger telemetry; no automatic reward penalty | validator audit tests + M2-V1 independent seeds | `CI_PASS / M2_V1_CHAIN_PASS` |
 | M2-15 | evaluator-version drift | HIGH | old evaluator score is immediately economically ineligible; first new-version success starts a fresh score epoch; rolling weight construction enforces it | score-state + rolling-economics tests | `CI_PASS / ROLLING_CHAIN_SETTLEMENT_NOT_RUN` |
 | M2-16 | seed variance / lucky miner | HIGH | 100-private-seed dispersion gate; useful generalizer must remain top and policy-violating memory never receives positive weight | validator-dispersion tests/script | `CI_PASS` |
 | M2-17 | duplicate rule IDs / ambiguous semantics | MEDIUM | duplicate rule IDs rejected before evaluation | admission tests | `CI_PASS` |
@@ -131,7 +135,7 @@ The local Yuma implementation is a transparent falsification/reference model onl
 
 ---
 
-## Manual chain proofs designed but not yet earned
+## Manual chain proofs and evidence
 
 ### M2-V1 — non-owner multi-validator consensus
 
@@ -144,9 +148,12 @@ Required evidence:
 - all three settle independent rows;
 - after an epoch, actual Subtensor miner incentives preserve the intended quality ordering.
 
-Commit-reveal is disabled only for this observable-row fixture.
+Commit-reveal was disabled only for this observable-row fixture.
 
-State: `NOT_RUN`.
+State: `CHAIN_LOCAL_PASS` — run `33577658140` / #6, artifact `9830668013`,
+digest `sha256:6c0def492691767889e9e10e1ddc74445c7e3fe60e4d07ffaf442d5921298a2b`.
+Seeds 101/202/303 all ranked useful-generalizing UID 6 above overfit UID 5;
+the final chain readback at block 782 reported expected and actual top UID 6.
 
 ### M2-C1 — endpoint churn — passed
 
@@ -186,22 +193,20 @@ State: `NOT_RUN`.
 
 ## Residual risks that still block M2 closure
 
-1. actual non-owner multi-validator chain behavior is unproven;
-2. commit-reveal-on settlement is unproven;
-3. rolling multi-round economic state has not yet been used in an authoritative chain settlement loop;
-4. validator evaluation cost is bounded in a reference planner but not measured under realistic deep execution;
-5. action tokens are declarative-only, but a production executor capability/action registry is not yet frozen as an explicit protocol field;
-6. majority validator economic capture is a Bittensor-system security boundary, not locally solvable by Consequent;
-7. public Bittensor testnet mutation remains `NOT_RUN`.
+1. commit-reveal-on settlement is unproven;
+2. rolling multi-round economic state has not yet been used in an authoritative chain settlement loop;
+3. validator evaluation cost is bounded in a reference planner but not measured under realistic deep execution;
+4. action tokens are declarative-only, but a production executor capability/action registry is not yet frozen as an explicit protocol field;
+5. majority validator economic capture is a Bittensor-system security boundary, not locally solvable by Consequent;
+6. public Bittensor testnet mutation remains `NOT_RUN`.
 
 ---
 
 ## Next pressure tranche
 
 1. inspect the current-head chain-local regression artifacts for any semantic-ordering failure;
-2. complete M2-V1 multi-validator localnet and verify real permits + post-epoch chain incentives;
-3. run the M2-V2 commit-reveal-on settlement proof;
-4. execute a multi-round rolling-weight chain/simulation harness with disappearance, endpoint move and evaluator migration;
-5. measure actual canary/deep evaluation cost and set a validator economic budget;
-6. freeze a production capability/action vocabulary contract without conflating it with source provenance;
-7. only then reassess M2 exit readiness and M3 consumer integration.
+2. run the M2-V2 commit-reveal-on settlement proof;
+3. execute a multi-round rolling-weight chain/simulation harness with disappearance, endpoint move and evaluator migration;
+4. measure actual canary/deep evaluation cost and set a validator economic budget;
+5. freeze a production capability/action vocabulary contract without conflating it with source provenance;
+6. only then reassess M2 exit readiness and M3 consumer integration.

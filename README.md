@@ -80,19 +80,27 @@ The endpoint-churn pressure lane is now chain-local proven: run #12 /
 the live ServeAxon rate-limit window and verified refreshed discovery plus
 signed traffic at the new endpoint.
 
-The manual M2-V1 workflow is **designed, not yet evidence-backed**. It must not be represented as a passed multi-validator chain test until an actual run succeeds.
+M2-V1 is now **chain-local proven**: workflow #6 / `33577658140` passed with
+artifact `9830668013` (digest
+`sha256:6c0def492691767889e9e10e1ddc74445c7e3fe60e4d07ffaf442d5921298a2b`).
+Two independently staked non-owner validators (UIDs 1 and 2) held real permits,
+three independently seeded rows settled, and after the 360-block tempo the
+actual Subtensor/Yuma incentive winner (UID 6, useful-generalizing memory)
+matched the expected quality ordering. This is chain-local evidence, not public
+testnet evidence.
 
 ## Evidence boundaries
 
 Public Bittensor testnet mutation/deployment is still `NOT_RUN`.
 
 Consequent has **not yet proven**:
-- multiple independent non-owner validators on chain;
 - commit-reveal-on settlement end-to-end;
-- ~~endpoint churn/restart behavior~~ on chain-local infrastructure (M2-C1 passed; public testnet still unrun);
 - miner-validator collusion resistance on chain;
 - public testnet registration/serving/weights;
 - external consumer integration;
 - production demand/economics.
+
+Endpoint churn/restart is chain-local proven by M2-C1; public testnet mutation
+remains unrun.
 
 Deployment alone is not the target. The subnet is only credible when the rewarded commodity, validator truth, Bittensor settlement, and consumer value all survive pressure.

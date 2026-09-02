@@ -342,21 +342,20 @@ As of this freeze:
 - `btauth/1` signing and verification hooks exist.
 - `bt.SetWeights` intent path exists.
 - Golden local mechanism simulation previously passed its defined adversarial ranking checks.
+- Fresh chain-local M0/M1/M2-V1 evidence proves ServeAxon publication,
+  metagraph discovery, authenticated miner rounds, permit-gated miners,
+  independent validator rows, and post-tempo Yuma ordering. The exact run and
+  artifact references are recorded in the evidence revision below.
 
-### Not yet proven
+### Not yet proven on public testnet / production
 
-- real wallet/hotkey configuration in this repo flow;
+- funded testnet wallet/hotkey configuration;
 - neuron registration on a Consequent testnet netuid;
-- `ServeAxon` endpoint publication;
-- metagraph-driven miner discovery;
-- metagraph-driven validator caller authorization;
-- a real authenticated validator→miner network round trip;
-- six independently running miner services;
-- networked concealed evaluation across those miners;
-- live hyperparameter-conformant weight setting;
-- validator permit on the target subnet;
+- public-testnet `ServeAxon` endpoint publication and discovery;
+- public-testnet authenticated validator→miner network round trip;
+- public-testnet validator permits and live hyperparameter-conformant weights;
 - successful weight extrinsic on Bittensor testnet;
-- 3-validator / 10-miner topology;
+- 3-validator / 10-miner public-testnet topology;
 - testnet demo;
 - final hackathon submission.
 
@@ -364,17 +363,19 @@ No statement in the README, pitch or demo may imply these are complete until evi
 
 ### Evidence revision — 2026-09-02
 
-- The published `bootstrap/m0` head `b1bc8c0ba4dc6514aea8349d9c407167dfe81da9`
-  passed CI, the M1 chain-local regression, and the endpoint-churn workflow.
+- The published `bootstrap/m0` branch passed current-head CI, the M1
+  chain-local regression, the endpoint-churn workflow, and the M2-V1
+  multi-validator/Yuma workflow.
 - M2-C1 endpoint churn is now `CHAIN_LOCAL_PASS`: GitHub Actions run
   `33577658110` / #12, artifact `9827546184`, digest
   `sha256:87947c466473604e422398037c236a83add6ae281166bd2e0ac69c5199e19f32`.
   The same registered hotkey moved from `10.1.0.237:8091` to
   `10.1.0.237:8191`; refreshed metagraph discovery and signed traffic used the
   new endpoint after the live ServeAxon rate-limit window.
-- M2-V1 run `33577658140` / #6 is still in progress. No independent-validator
-  or Yuma settlement claim is promoted until its rows and post-epoch outcome
-  are captured.
+- M2-V1 is now `CHAIN_LOCAL_PASS`: run `33577658140` / #6, artifact `9830668013`,
+  digest `sha256:6c0def492691767889e9e10e1ddc74445c7e3fe60e4d07ffaf442d5921298a2b`.
+  Two non-owner validators held real permits, three independent rows settled,
+  and expected top UID 6 matched actual top UID 6 after the 360-block tempo.
 - The M2-V2 commit-reveal proof harness is published on `bootstrap/m0` in
   `.github/workflows/m2-commit-reveal-localnet.yml` and
   `scripts/m2_commit_reveal_chain.py`, but has not been run and remains

@@ -4,7 +4,7 @@
 **Status:** `DRAFT / DESIGN-FROZEN, TESTNET EVIDENCE INCOMPLETE`  
 **Repository:** `etvjay/Consequent`  
 **Implementation branch:** `bootstrap/m0`  
-**Proposal revision:** 2026-09-01
+**Proposal revision:** 2026-09-02
 
 This proposal describes the mechanism we intend to build. Evidence labels are
 deliberate: a local or simulated result is not represented as testnet proof.
@@ -258,7 +258,7 @@ facts.
 | Six-miner competitive local chain loop | `CHAIN_LOCAL_PASS` (M1) |
 | UID weights accepted and read back locally | `CHAIN_LOCAL_PASS` (M1) |
 | Endpoint churn workflow | `CHAIN_LOCAL_PASS` — Actions run #12 / `33577658110`, artifact `9827546184` |
-| Independent non-owner validator rows and Yuma settlement | `IN_PROGRESS` — M2-V1 run #6 has submitted all three rows; post-tempo Yuma readback is pending |
+| Independent non-owner validator rows and Yuma settlement | `CHAIN_LOCAL_PASS` — M2-V1 run #6 / `33577658140`, artifact `9830668013` |
 | Commit-reveal-on settlement | `UNPROVEN` |
 | Public Bittensor testnet deployment | `NOT_RUN` |
 | External BMP consumer | `UNPROVEN` |
@@ -266,9 +266,10 @@ facts.
 Prior M2 run #5 reached the row-submission step but stopped before the first row
 was written because the local Subtensor `get_subnet_hyperparams_v3` response did
 not expose `bonds_penalty`. The compatibility fix preserves that value as
-explicitly unknown instead of fabricating a default. M2-V1 run #6 has since
-completed permit-gated setup and all three independent row submissions; its
-post-tempo Yuma artifact is still required before this claim can close.
+explicitly unknown instead of fabricating a default. M2-V1 run #6 then completed
+permit-gated setup, all three independent row submissions, and the post-tempo
+Yuma readback: expected top UID 6 matched actual top UID 6. This is chain-local
+evidence only; commit-reveal-on and public testnet mutation remain unproven.
 
 The current code is on [`bootstrap/m0`](https://github.com/etvjay/Consequent/tree/bootstrap/m0).
 The default `main` branch is not yet the implementation branch. The open draft

@@ -214,7 +214,7 @@ A batch without complete required evidence must not be promoted as proof.
 M0     one-miner strict chain-local economic loop                 CLOSED
 M1     six-miner competitive chain-local economic loop            CLOSED
 M2     adversarial mechanism pressure                             ACTIVE
-M2-V1  non-owner multi-validator chain-local/Yuma proof           DESIGNED / IN PROGRESS
+M2-V1  non-owner multi-validator chain-local/Yuma proof           CHAIN_LOCAL_PASS
 M2-C1  endpoint churn / ServeAxon refresh                        CHAIN_LOCAL_PASS
 M2-V2  commit-reveal-on chain-local settlement                    HARNESS READY / NOT_RUN
 M3     external consumer integration                              PENDING
@@ -225,7 +225,15 @@ P0     production candidate                                       PENDING
 
 M1 authoritative run: `32906478860`.
 
-M2-V1 is intentionally a manual evidence workflow because validator permits/Yuma outcomes depend on epoch timing. The current run is still in progress and is **not evidence that it passed**. M2-C1 is chain-local proven by Actions run #12 / `33577658110` (artifact `9827546184`): the same hotkey moved through the live ServeAxon window and signed traffic followed the refreshed endpoint.
+M2-V1 is intentionally a manual evidence workflow because validator permits/Yuma
+outcomes depend on epoch timing. It is chain-local proven by Actions run #6 /
+`33577658140`, artifact `9830668013`, digest
+`sha256:6c0def492691767889e9e10e1ddc74445c7e3fe60e4d07ffaf442d5921298a2b`:
+two non-owner validators held real permits, three independent rows settled, and
+the post-tempo actual top incentive UID matched the expected useful miner. M2-C1
+is chain-local proven by Actions run #12 / `33577658110` (artifact `9827546184`):
+the same hotkey moved through the live ServeAxon window and signed traffic
+followed the refreshed endpoint.
 
 ## 10. Release gates
 

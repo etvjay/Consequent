@@ -58,11 +58,12 @@ This closes M1. It does not prove multiple independent validators, production co
 
 ## M2 current checkpoint
 
-Current implementation head at this checkpoint: `b1bc8c0ba4dc6514aea8349d9c407167dfe81da9`.
+Current implementation is published on the `bootstrap/m0` branch; exact
+evidence commits are recorded with each workflow artifact below.
 
-Current-head CI and chain-local regressions are **PASS** — `ci` #164 /
-`33577658164`, `localnet` #93 / `33577658111`, `m1-localnet` #51 /
-`33577658106`, and `m2-churn-localnet` #12 / `33577658110`.
+Current-head CI and chain-local regressions are **PASS** — `ci` #167 /
+`33585733352`, `localnet` #96 / `33585733349`, `m1-localnet` #54 /
+`33585733357`, and `m2-churn-localnet` #12 / `33577658110`.
 
 M2 controls now implemented and CI-proven include:
 - admission before causal scoring;
@@ -91,9 +92,14 @@ These are `CI_PASS`/reference controls, not claims that Subtensor has executed e
 
 `.github/workflows/m2-multivalidator-localnet.yml` exists as a manual workflow.
 
-It is designed to prove two staked non-owner validators obtain real permits, miners enforce permits, three validators use independent private seeds, three rows settle, and actual post-epoch Subtensor incentives preserve behavioral-quality ordering.
+It proved two staked non-owner validators obtained real permits, miners enforced
+permits, three validators used independent private seeds, three rows settled, and
+actual post-epoch Subtensor incentives preserved behavioral-quality ordering.
 
-State: `NOT_RUN`.
+State: `CHAIN_LOCAL_PASS` — run `33577658140` / #6, artifact `9830668013`,
+digest `sha256:6c0def492691767889e9e10e1ddc74445c7e3fe60e4d07ffaf442d5921298a2b`.
+The row winners were useful UID 6 over overfit UID 5 for all seeds; final
+chain readback showed UID 6 as the actual top-incentive miner (0.7921416037).
 
 ### M2-C1 — endpoint churn
 
@@ -121,7 +127,6 @@ State: `NOT_RUN`.
 ## M2 residual blockers
 
 M2 is **not closed**. Remaining blockers include:
-- non-owner multi-validator chain proof;
 - commit-reveal-on settlement;
 - ~~real chain endpoint churn~~ (M2-C1 `CHAIN_LOCAL_PASS`);
 - rolling multi-round chain settlement;
