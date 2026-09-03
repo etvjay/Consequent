@@ -285,12 +285,17 @@ PR is [#1](https://github.com/etvjay/Consequent/pull/1).
 
 ### Testnet implementation
 
-1. repair M2 independent validator-row submission;
-2. prove non-owner validator permits and post-epoch Yuma outcome;
-3. prove commit-reveal-on submission, application, and read-back;
-4. run registered miners through current-metagraph discovery and `ServeAxon`;
-5. deploy the smallest reproducible Bittensor testnet topology;
-6. capture receipts, chain state, logs, and replay instructions.
+1. prove commit-reveal-on submission, delayed application, and read-back;
+2. run repeated rolling rounds with endpoint churn, disappearance, and
+   evaluator-version changes in the economic state;
+3. run registered miners through current-metagraph discovery and `ServeAxon`;
+4. deploy the smallest reproducible Bittensor testnet topology;
+5. capture receipts, chain state, logs, and replay instructions for every
+   public-testnet mutation.
+
+The independent-validator permit/Yuma gate and endpoint-churn gate are already
+closed as chain-local evidence (M2-V1 and M2-C1). They remain separate from
+the public-testnet deployment gate below.
 
 ### Ecosystem and final submission
 
