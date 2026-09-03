@@ -1,0 +1,249 @@
+name: m2-commit-reveal-localnet
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commit-reveal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Consequent and Bittensor 11
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Start fresh production-timing Subtensor localnet
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name consequent-m2-cr-chain \
+            -p 9944:9944 -p 9945:9945 \
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
+          python scripts/localnet_ready.py \
+            --network local --attempts 90 --poll-seconds 2 --min-block 1 \
+            --output /tmp/m2-cr-chain-ready.json
+
+      - name: Create and fund owner, validator, and miners
+        run: |
+          set -euo pipefail
+          btcli wallet create -w consequent-cr-owner -H default --no-password >/dev/null
+          btcli wallet create -w consequent-cr-validator -H default --no-password >/dev/null
+          for i in 1 2; do
+            btcli wallet create -w "consequent-cr-miner-${i}" -H default --no-password >/dev/null
+          done
+          python - <<'PY'
+          import asyncio
+          import bittensor as bt
+          from bittensor.keyfiles import Keypair
+
+          async def main():
+              alice = Keypair.create_from_uri('//Alice')
+              roles = [
+                  ('consequent-cr-owner', 4000.0),
+                  ('consequent-cr-validator', 2500.0),
+                  ('consequent-cr-miner-1', 100.0),
+                  ('consequent-cr-miner-2', 100.0),
+              ]
+              async with bt.Subtensor('local') as client:
+                  for name, amount in roles:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      result = await client.execute(
+                          bt.Transfer(dest_ss58=wallet.coldkeypub.ss58_address, amount_tao=amount),
+                          alice,
+                      )
+                      if not result.success:
+                          raise SystemExit(f'funding {name} failed: {result.error.code} {result.error.remediation}')
+          asyncio.run(main())
+          PY
+
+      - name: Register subnet, validator, and two miners
+        run: |
+          set -euo pipefail
+          btcli tx register-subnet -w consequent-cr-owner -H default --network local -y
+          btcli tx start-call --netuid 2 -w consequent-cr-owner -H default --network local -y
+          btcli tx burned-register --netuid 2 -w consequent-cr-validator -H default --network local -y
+          sleep 13
+          for i in 1 2; do
+            btcli tx burned-register --netuid 2 -w "consequent-cr-miner-${i}" -H default --network local -y
+            sleep 13
+          done
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/m2-cr-metagraph-registered.json
+
+      - name: Stake validator and wait for a real permit
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/m2-cr-validator-permit.json
+          import asyncio, json
+          import bittensor as bt
+
+          async def main():
+              wallet = bt.Wallet(name='consequent-cr-validator', hotkey='default')
+              async with bt.Subtensor('local') as client:
+                  before = await client.subnets.metagraph(netuid=2)
+                  neuron = before.by_hotkey(wallet.hotkey.ss58_address)
+                  if neuron is None:
+                      raise SystemExit('commit-reveal validator is not registered')
+                  intent = bt.AddStake(
+                      hotkey_ss58=wallet.hotkey.ss58_address,
+                      netuid=2,
+                      amount_tao=10.0,
+                      slippage_protection=True,
+                      rate_tolerance=0.05,
+                  )
+                  plan = await client.plan(intent, wallet)
+                  result = await client.execute(intent, wallet)
+                  if not result.success:
+                      raise SystemExit(f'validator stake failed: {result.error.code} {result.error.remediation}')
+                  start = int((await client.subnets.metagraph(netuid=2)).block)
+                  while True:
+                      mg = await client.subnets.metagraph(netuid=2)
+                      current = mg.by_hotkey(wallet.hotkey.ss58_address)
+                      if current is None:
+                          raise SystemExit('validator disappeared while waiting for permit')
+                      if bool(current.validator_permit):
+                          print(json.dumps({
+                              'state': 'M2_CR_VALIDATOR_PERMIT_PASS',
+                              'start_block': start,
+                              'permit_block': int(mg.block),
+                              'uid': int(current.uid),
+                              'hotkey': wallet.hotkey.ss58_address,
+                              'plan': plan.to_dict(),
+                              'extrinsic_id': getattr(result, 'extrinsic_id', None),
+                          }, indent=2, sort_keys=True, default=str))
+                          return
+                      if int(mg.block) - start > 430:
+                          raise SystemExit('validator permit was not granted within bounded wait')
+                      await asyncio.sleep(12.5)
+          asyncio.run(main())
+          PY
+
+      - name: Resolve chain-valid advertised IP
+        run: |
+          set -euo pipefail
+          ADVERTISED_IP="$(hostname -I | tr ' ' '\n' | grep -Ev '^(127\.|0\.0\.0\.0$|$)' | head -n 1)"
+          test -n "$ADVERTISED_IP"
+          echo "CONSEQUENT_CR_ADVERTISED_IP=$ADVERTISED_IP" >> "$GITHUB_ENV"
+          printf 'advertised_ip=%s\n' "$ADVERTISED_IP" | tee /tmp/m2-cr-advertised-ip.txt
+
+      - name: Start two served miners
+        run: |
+          set -euo pipefail
+          for i in 1 2; do
+            port=$((8090 + i))
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="consequent-cr-miner-${i}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=1 \
+              CONSEQUENT_ADVERTISED_PORT="$port" \
+              CONSEQUENT_MINER_STRATEGY=useful_generalizing_memory \
+              nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port "$port" \
+              >"/tmp/m2-cr-miner-${i}.log" 2>&1 &
+            echo $! >"/tmp/m2-cr-miner-${i}.pid"
+          done
+          for i in 1 2; do
+            port=$((8090 + i))
+            for attempt in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${port}/health" >/dev/null; then break; fi
+              if [ "$attempt" -eq 30 ]; then cat "/tmp/m2-cr-miner-${i}.log"; exit 1; fi
+              sleep 1
+            done
+          done
+
+      - name: Publish both miner endpoints
+        run: |
+          set -euo pipefail
+          for i in 1 2; do
+            port=$((8090 + i))
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="consequent-cr-miner-${i}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_ADVERTISED_IP="$CONSEQUENT_CR_ADVERTISED_IP" \
+              CONSEQUENT_ADVERTISED_PORT="$port" \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=1 \
+              python scripts/serve_endpoint.py --execute | tee "/tmp/m2-cr-serve-${i}.txt"
+          done
+          sleep 13
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/m2-cr-metagraph-served.json
+
+      - name: Confirm commit-reveal remains enabled
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/m2-cr-policy.json
+          import asyncio, json
+          from validator.chain_state import read_consensus_policy, read_weight_policy
+          import bittensor as bt
+
+          async def main():
+              async with bt.Subtensor('local') as client:
+                  weight = await read_weight_policy(client=client, netuid=2)
+                  consensus = await read_consensus_policy(client=client, netuid=2)
+              print(json.dumps({
+                  'weight_policy': weight.__dict__,
+                  'consensus_policy': consensus.__dict__,
+              }, indent=2, sort_keys=True, default=str))
+              if not weight.commit_reveal_weights_enabled:
+                  raise SystemExit('commit-reveal unexpectedly disabled before M2-V2 submission')
+              if weight.commit_reveal_period <= 0:
+                  raise SystemExit('commit-reveal period must be positive')
+          asyncio.run(main())
+          PY
+
+      - name: Submit and observe timelocked weights
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-cr-validator
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '1'
+        run: |
+          set -euo pipefail
+          python scripts/m2_commit_reveal_chain.py \
+            --max-wait-blocks 120 \
+            --max-application-wait-blocks 520 \
+            --max-epoch-wait-blocks 430 \
+            | tee /tmp/m2-cr-result.json
+
+      - name: Upload M2-V2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consequent-m2-commit-reveal-localnet-evidence
+          if-no-files-found: warn
+          path: |
+            /tmp/m2-cr-chain-ready.json
+            /tmp/m2-cr-metagraph-registered.json
+            /tmp/m2-cr-metagraph-served.json
+            /tmp/m2-cr-validator-permit.json
+            /tmp/m2-cr-advertised-ip.txt
+            /tmp/m2-cr-policy.json
+            /tmp/m2-cr-result.json
+            /tmp/m2-cr-serve-*.txt
+            /tmp/m2-cr-miner-*.log
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat /tmp/m2-cr-chain-ready.json 2>/dev/null || true
+          cat /tmp/m2-cr-validator-permit.json 2>/dev/null || true
+          cat /tmp/m2-cr-policy.json 2>/dev/null || true
+          cat /tmp/m2-cr-result.json 2>/dev/null || true
+          cat /tmp/m2-cr-miner-*.log 2>/dev/null || true
+          docker logs consequent-m2-cr-chain 2>/dev/null || true

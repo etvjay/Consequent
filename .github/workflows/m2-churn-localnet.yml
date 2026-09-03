@@ -1,0 +1,282 @@
+name: m2-churn-localnet
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  endpoint-churn:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Consequent and Bittensor 11
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Start fresh Subtensor localnet
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name consequent-m2-churn-chain \
+            -p 9944:9944 -p 9945:9945 \
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
+          python scripts/localnet_ready.py --network local --attempts 90 --poll-seconds 2 --min-block 1 --output /tmp/churn-chain-ready.json
+
+      - name: Create and fund owner and churn miner
+        run: |
+          set -euo pipefail
+          btcli wallet create -w consequent-churn-owner -H default --no-password >/dev/null
+          btcli wallet create -w consequent-churn-miner -H default --no-password >/dev/null
+          python - <<'PY'
+          import asyncio
+          import bittensor as bt
+          from bittensor.keyfiles import Keypair
+
+          async def main():
+              alice = Keypair.create_from_uri('//Alice')
+              async with bt.Subtensor('local') as client:
+                  for name, amount in [('consequent-churn-owner', 2500.0), ('consequent-churn-miner', 100.0)]:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      result = await client.execute(
+                          bt.Transfer(dest_ss58=wallet.coldkeypub.ss58_address, amount_tao=amount),
+                          alice,
+                      )
+                      if not result.success:
+                          raise SystemExit(f'funding {name} failed: {result.error.code}')
+          asyncio.run(main())
+          PY
+
+      - name: Register subnet and miner
+        run: |
+          set -euo pipefail
+          btcli tx register-subnet -w consequent-churn-owner -H default --network local -y
+          btcli tx start-call --netuid 2 -w consequent-churn-owner -H default --network local -y
+          btcli tx burned-register --netuid 2 -w consequent-churn-miner -H default --network local -y
+          sleep 13
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/churn-metagraph-registered.json
+
+      - name: Resolve chain-valid advertised IP
+        run: |
+          set -euo pipefail
+          ADVERTISED_IP="$(hostname -I | tr ' ' '\n' | grep -Ev '^(127\.|0\.0\.0\.0$|$)' | head -n 1)"
+          test -n "$ADVERTISED_IP"
+          echo "CONSEQUENT_CHURN_ADVERTISED_IP=$ADVERTISED_IP" >> "$GITHUB_ENV"
+
+      - name: Start and publish endpoint A
+        run: |
+          set -euo pipefail
+          env \
+            CONSEQUENT_NETWORK_MODE=1 \
+            CONSEQUENT_BT_NETWORK=local \
+            CONSEQUENT_NETUID=2 \
+            CONSEQUENT_WALLET=consequent-churn-miner \
+            CONSEQUENT_HOTKEY=default \
+            CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=0 \
+            CONSEQUENT_ADVERTISED_PORT=8091 \
+            CONSEQUENT_MINER_STRATEGY=useful_generalizing_memory \
+            nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port 8091 >/tmp/churn-miner-a.log 2>&1 &
+          echo $! >/tmp/churn-miner-a.pid
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8091/health >/dev/null && break; sleep 1; done
+          env \
+            CONSEQUENT_NETWORK_MODE=1 \
+            CONSEQUENT_BT_NETWORK=local \
+            CONSEQUENT_NETUID=2 \
+            CONSEQUENT_WALLET=consequent-churn-miner \
+            CONSEQUENT_HOTKEY=default \
+            CONSEQUENT_ADVERTISED_IP="$CONSEQUENT_CHURN_ADVERTISED_IP" \
+            CONSEQUENT_ADVERTISED_PORT=8091 \
+            python scripts/serve_endpoint.py --execute | tee /tmp/churn-serve-a.txt
+          sleep 13
+
+      - name: Capture canonical endpoint A
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/churn-before.json
+          import asyncio, json
+          import bittensor as bt
+          from validator.discovery import discover_miners
+
+          async def main():
+              owner = bt.Wallet(name='consequent-churn-owner', hotkey='default')
+              miner = bt.Wallet(name='consequent-churn-miner', hotkey='default')
+              async with bt.Subtensor('local') as client:
+                  miners = await discover_miners(client=client, netuid=2, exclude_hotkeys=(owner.hotkey.ss58_address,))
+              target = next((m for m in miners if m.hotkey == miner.hotkey.ss58_address), None)
+              if target is None:
+                  raise SystemExit('endpoint A not discovered')
+              print(json.dumps(target.__dict__, sort_keys=True))
+          asyncio.run(main())
+          PY
+          OLD_ENDPOINT="$(python -c "import json; print(json.load(open('/tmp/churn-before.json'))['endpoint'])")"
+          echo "CONSEQUENT_OLD_ENDPOINT=$OLD_ENDPOINT" >> "$GITHUB_ENV"
+
+      - name: Wait for chain-owned ServeAxon update window
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/churn-serving-window.json
+          import asyncio
+          import json
+          import sys
+          from collections.abc import Mapping
+
+          import bittensor as bt
+
+          def field(record, name):
+              if isinstance(record, Mapping):
+                  return record[name]
+              return getattr(record, name)
+
+          async def main():
+              wallet = bt.Wallet(name='consequent-churn-miner', hotkey='default')
+              async with bt.Subtensor('local') as client:
+                  hp = await client.subnets.subnet_hyperparameters(netuid=2)
+                  if hp is None:
+                      raise SystemExit('subnet hyperparameters unavailable while waiting for ServeAxon window')
+                  serving_rate_limit = int(field(hp, 'serving_rate_limit'))
+                  mg = await client.subnets.metagraph(netuid=2)
+                  neuron = mg.by_hotkey(wallet.hotkey.ss58_address)
+                  if neuron is None:
+                      raise SystemExit('churn miner missing from metagraph while reading ServeAxon window')
+
+                  # Bittensor v11 lifts AxonInfo to a typed `ip:port` string on
+                  # MetagraphNeuron.axon. The untouched runtime AxonInfo remains
+                  # in metagraph.raw and carries the authoritative serve block.
+                  raw_axons = list(mg.raw.get('axons') or [])
+                  if int(neuron.uid) >= len(raw_axons):
+                      raise SystemExit('raw AxonInfo missing for churn miner uid')
+                  axon_record = raw_axons[int(neuron.uid)]
+                  last_serve_block = int(field(axon_record, 'block'))
+                  if last_serve_block <= 0:
+                      raise SystemExit('expected endpoint A to have a positive chain serve block')
+
+                  # Use one block of safety beyond the configured interval. This avoids
+                  # encoding an equality-edge assumption into the evidence harness.
+                  target_block = last_serve_block + serving_rate_limit + 1
+                  initial_block = int(mg.block)
+                  initial_remaining = max(0, target_block - initial_block)
+                  if initial_remaining > 80:
+                      raise SystemExit(
+                          f'ServeAxon window requires {initial_remaining} blocks, above bounded churn wait'
+                      )
+
+                  current_block = initial_block
+                  while current_block < target_block:
+                      print(
+                          json.dumps({
+                              'event': 'M2_SERVE_RATE_LIMIT_WAIT',
+                              'current_block': current_block,
+                              'last_serve_block': last_serve_block,
+                              'serving_rate_limit': serving_rate_limit,
+                              'target_block': target_block,
+                              'remaining_blocks': target_block - current_block,
+                          }, sort_keys=True),
+                          file=sys.stderr,
+                          flush=True,
+                      )
+                      await asyncio.sleep(12.5)
+                      current_block = int(await client.block())
+
+                  print(json.dumps({
+                      'state': 'SERVING_RATE_LIMIT_WINDOW_OPEN',
+                      'hotkey': wallet.hotkey.ss58_address,
+                      'last_serve_block': last_serve_block,
+                      'serving_rate_limit': serving_rate_limit,
+                      'initial_block': initial_block,
+                      'initial_remaining_blocks': initial_remaining,
+                      'target_block': target_block,
+                      'legal_republish_block': current_block,
+                  }, indent=2, sort_keys=True))
+
+          asyncio.run(main())
+          PY
+
+      - name: Restart same hotkey on endpoint B and republish
+        run: |
+          set -euo pipefail
+          kill "$(cat /tmp/churn-miner-a.pid)" || true
+          for i in $(seq 1 30); do
+            if ! curl -fsS http://127.0.0.1:8091/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          env \
+            CONSEQUENT_NETWORK_MODE=1 \
+            CONSEQUENT_BT_NETWORK=local \
+            CONSEQUENT_NETUID=2 \
+            CONSEQUENT_WALLET=consequent-churn-miner \
+            CONSEQUENT_HOTKEY=default \
+            CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=0 \
+            CONSEQUENT_ADVERTISED_PORT=8191 \
+            CONSEQUENT_MINER_STRATEGY=useful_generalizing_memory \
+            nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port 8191 >/tmp/churn-miner-b.log 2>&1 &
+          echo $! >/tmp/churn-miner-b.pid
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8191/health >/dev/null && break; sleep 1; done
+          env \
+            CONSEQUENT_NETWORK_MODE=1 \
+            CONSEQUENT_BT_NETWORK=local \
+            CONSEQUENT_NETUID=2 \
+            CONSEQUENT_WALLET=consequent-churn-miner \
+            CONSEQUENT_HOTKEY=default \
+            CONSEQUENT_ADVERTISED_IP="$CONSEQUENT_CHURN_ADVERTISED_IP" \
+            CONSEQUENT_ADVERTISED_PORT=8191 \
+            python scripts/serve_endpoint.py --execute | tee /tmp/churn-serve-b.txt
+          sleep 13
+
+      - name: Refresh discovery and prove signed traffic follows endpoint B
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-churn-owner
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: |
+          set -euo pipefail
+          python scripts/m2_chain_churn.py | tee /tmp/churn-result.json
+          python - <<'PY'
+          import json
+          result = json.load(open('/tmp/churn-result.json'))
+          if result['state'] != 'M2_CHAIN_ENDPOINT_CHURN_PASS':
+              raise SystemExit('unexpected churn state')
+          if result['old_endpoint'] == result['new_endpoint']:
+              raise SystemExit('endpoint did not change')
+          if not str(result['new_endpoint']).endswith(':8191'):
+              raise SystemExit(f"unexpected refreshed endpoint: {result['new_endpoint']}")
+          PY
+
+      - name: Upload churn evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consequent-m2-churn-localnet-evidence
+          if-no-files-found: warn
+          path: |
+            /tmp/churn-chain-ready.json
+            /tmp/churn-metagraph-registered.json
+            /tmp/churn-before.json
+            /tmp/churn-serving-window.json
+            /tmp/churn-serve-a.txt
+            /tmp/churn-serve-b.txt
+            /tmp/churn-result.json
+            /tmp/churn-miner-a.log
+            /tmp/churn-miner-b.log
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat /tmp/churn-chain-ready.json 2>/dev/null || true
+          cat /tmp/churn-before.json 2>/dev/null || true
+          cat /tmp/churn-serving-window.json 2>/dev/null || true
+          cat /tmp/churn-result.json 2>/dev/null || true
+          cat /tmp/churn-miner-a.log 2>/dev/null || true
+          cat /tmp/churn-miner-b.log 2>/dev/null || true
+          docker logs consequent-m2-churn-chain 2>/dev/null || true

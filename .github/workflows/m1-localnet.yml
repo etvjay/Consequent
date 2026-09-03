@@ -1,0 +1,276 @@
+name: m1-localnet
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  competitive-subnet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Consequent and Bittensor 11
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Start fresh Subtensor localnet
+        run: |
+          set -euo pipefail
+          # Pin the exact Subtensor image that produced the authoritative M1
+          # evidence. Readiness is chain-level, not bootstrap-subnet-specific.
+          docker run -d --rm --name consequent-m1-chain \
+            -p 9944:9944 -p 9945:9945 \
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
+          python scripts/localnet_ready.py \
+            --network local --attempts 90 --poll-seconds 2 --min-block 1 \
+            --output /tmp/m1-chain-ready.json
+
+      - name: Create and fund owner plus six miners
+        run: |
+          set -euo pipefail
+          btcli wallet create -w consequent-m1-owner -H default --no-password >/dev/null
+          for i in $(seq 1 6); do
+            btcli wallet create -w "consequent-m1-miner-${i}" -H default --no-password >/dev/null
+          done
+
+          python - <<'PY'
+          import asyncio
+          import bittensor as bt
+          from bittensor.keyfiles import Keypair
+
+          async def main():
+              alice = Keypair.create_from_uri('//Alice')
+              roles = [('consequent-m1-owner', 2500.0)] + [
+                  (f'consequent-m1-miner-{i}', 100.0) for i in range(1, 7)
+              ]
+              async with bt.Subtensor('local') as client:
+                  for name, amount in roles:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      result = await client.execute(
+                          bt.Transfer(dest_ss58=wallet.coldkeypub.ss58_address, amount_tao=amount),
+                          alice,
+                      )
+                      if not result.success:
+                          raise SystemExit(f'funding {name} failed: {result.error.code}')
+          asyncio.run(main())
+          PY
+
+      - name: Register subnet and six miner neurons
+        run: |
+          set -euo pipefail
+          btcli tx register-subnet -w consequent-m1-owner -H default --network local -y
+          btcli tx start-call --netuid 2 -w consequent-m1-owner -H default --network local -y
+
+          for i in $(seq 1 6); do
+            btcli tx burned-register \
+              --netuid 2 \
+              -w "consequent-m1-miner-${i}" -H default \
+              --network local -y
+            sleep 13
+          done
+
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/m1-metagraph-registered.json
+          python - <<'PY' | tee /tmp/m1-registration-assertions.json
+          import asyncio, json
+          import bittensor as bt
+
+          async def main():
+              async with bt.Subtensor('local') as client:
+                  mg = await client.subnets.metagraph(netuid=2)
+                  rows = []
+                  owner = bt.Wallet(name='consequent-m1-owner', hotkey='default')
+                  owner_neuron = mg.by_hotkey(owner.hotkey.ss58_address)
+                  rows.append({'role': 'validator-owner', 'uid': int(owner_neuron.uid), 'registered': True})
+                  for i in range(1, 7):
+                      wallet = bt.Wallet(name=f'consequent-m1-miner-{i}', hotkey='default')
+                      try:
+                          neuron = mg.by_hotkey(wallet.hotkey.ss58_address)
+                      except Exception:
+                          neuron = None
+                      rows.append({
+                          'role': f'miner-{i}',
+                          'uid': int(neuron.uid) if neuron is not None else None,
+                          'registered': neuron is not None,
+                          'hotkey': wallet.hotkey.ss58_address,
+                      })
+                  print(json.dumps(rows, indent=2))
+                  if len(mg.neurons) < 7 or not all(row['registered'] for row in rows):
+                      raise SystemExit('M1 registration topology incomplete')
+          asyncio.run(main())
+          PY
+
+      - name: Resolve chain-valid advertised IP
+        run: |
+          set -euo pipefail
+          ADVERTISED_IP="$(hostname -I | tr ' ' '\n' | grep -Ev '^(127\.|0\.0\.0\.0$|$)' | head -n 1)"
+          if [ -z "$ADVERTISED_IP" ]; then
+            echo 'could not resolve non-loopback runner address' >&2
+            exit 1
+          fi
+          echo "CONSEQUENT_M1_ADVERTISED_IP=$ADVERTISED_IP" >> "$GITHUB_ENV"
+          printf 'advertised_ip=%s\n' "$ADVERTISED_IP" | tee /tmp/m1-advertised-ip.txt
+
+      - name: Start six authenticated miner services
+        run: |
+          set -euo pipefail
+          strategies=(
+            no_memory
+            irrelevant_memory
+            overfit_memory
+            useful_generalizing_memory
+            harmful_memory
+            policy_violating_memory
+          )
+
+          for idx in $(seq 0 5); do
+            i=$((idx + 1))
+            port=$((8090 + i))
+            strategy="${strategies[$idx]}"
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="consequent-m1-miner-${i}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=0 \
+              CONSEQUENT_ADVERTISED_PORT="$port" \
+              CONSEQUENT_MINER_STRATEGY="$strategy" \
+              nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port "$port" \
+              >"/tmp/m1-miner-${i}.log" 2>&1 &
+            echo $! >"/tmp/m1-miner-${i}.pid"
+          done
+
+          for i in $(seq 1 6); do
+            port=$((8090 + i))
+            ok=0
+            for attempt in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${port}/health" >/dev/null && \
+                 curl -fsS "http://${CONSEQUENT_M1_ADVERTISED_IP}:${port}/health" >/dev/null; then
+                ok=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$ok" -ne 1 ]; then
+              cat "/tmp/m1-miner-${i}.log"
+              exit 1
+            fi
+          done
+
+      - name: Publish all six miner endpoints with ServeAxon
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 6); do
+            port=$((8090 + i))
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="consequent-m1-miner-${i}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_ADVERTISED_IP="$CONSEQUENT_M1_ADVERTISED_IP" \
+              CONSEQUENT_ADVERTISED_PORT="$port" \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=0 \
+              python scripts/serve_endpoint.py --execute | tee "/tmp/m1-serve-${i}.txt"
+          done
+          sleep 13
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/m1-metagraph-served.json
+
+      - name: Assert six chain-published endpoints
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/m1-discovery-assertions.json
+          import asyncio, json
+          import bittensor as bt
+          from validator.discovery import discover_miners
+
+          async def main():
+              owner = bt.Wallet(name='consequent-m1-owner', hotkey='default')
+              async with bt.Subtensor('local') as client:
+                  miners = await discover_miners(
+                      client=client,
+                      netuid=2,
+                      exclude_hotkeys=(owner.hotkey.ss58_address,),
+                  )
+              payload = [m.__dict__ for m in miners]
+              print(json.dumps(payload, indent=2, sort_keys=True))
+              if len(miners) != 6:
+                  raise SystemExit(f'expected exactly six served miners, found {len(miners)}')
+              ports = {int(m.endpoint.rsplit(':', 1)[1]) for m in miners}
+              if ports != set(range(8091, 8097)):
+                  raise SystemExit(f'unexpected served port set: {sorted(ports)}')
+          asyncio.run(main())
+          PY
+
+      - name: Configure deterministic competitive weight visibility
+        run: |
+          set -euo pipefail
+          btcli tx set-hyperparameter \
+            --netuid 2 \
+            --name commit_reveal_weights_enabled \
+            --value false \
+            -w consequent-m1-owner -H default \
+            --network local -y
+          sleep 13
+          btcli query subnet-hyperparameters --netuid 2 --network local --json | tee /tmp/m1-weight-hyperparameters.json
+          python - <<'PY'
+          import json
+          with open('/tmp/m1-weight-hyperparameters.json', encoding='utf-8') as handle:
+              hp = json.load(handle)
+          if bool(hp['commit_reveal_weights_enabled']):
+              raise SystemExit('commit-reveal remained enabled in M1 deterministic fixture')
+          if int(hp['weights_rate_limit']) <= 0:
+              raise SystemExit('expected positive live weights_rate_limit')
+          PY
+
+      - name: Run competitive signed evaluation and settle weights
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-m1-owner
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: |
+          set -euo pipefail
+          python scripts/m1_chain_competition.py --max-wait-blocks 120 | tee /tmp/m1-chain-competition.json
+
+      - name: Upload M1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consequent-m1-localnet-evidence
+          if-no-files-found: warn
+          path: |
+            /tmp/m1-chain-ready.json
+            /tmp/m1-registration-assertions.json
+            /tmp/m1-advertised-ip.txt
+            /tmp/m1-metagraph-registered.json
+            /tmp/m1-metagraph-served.json
+            /tmp/m1-discovery-assertions.json
+            /tmp/m1-weight-hyperparameters.json
+            /tmp/m1-chain-competition.json
+            /tmp/m1-serve-*.txt
+            /tmp/m1-miner-*.log
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat /tmp/m1-chain-ready.json 2>/dev/null || true
+          cat /tmp/m1-registration-assertions.json 2>/dev/null || true
+          cat /tmp/m1-discovery-assertions.json 2>/dev/null || true
+          cat /tmp/m1-chain-competition.json 2>/dev/null || true
+          cat /tmp/m1-miner-*.log 2>/dev/null || true
+          docker logs consequent-m1-chain 2>/dev/null || true

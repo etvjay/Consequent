@@ -1,0 +1,392 @@
+name: m2-multivalidator-localnet
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-validators:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Consequent and Bittensor 11
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Start fresh production-timing Subtensor localnet
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name consequent-m2-chain \
+            -p 9944:9944 -p 9945:9945 \
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
+          python scripts/localnet_ready.py \
+            --network local \
+            --attempts 90 \
+            --poll-seconds 2 \
+            --min-block 1 \
+            --output /tmp/m2-chain-ready.json
+
+      - name: Create and fund owner, validators, and miners
+        run: |
+          set -euo pipefail
+          btcli wallet create -w consequent-m2-owner -H default --no-password >/dev/null
+          for i in 1 2; do
+            btcli wallet create -w "consequent-m2-validator-${i}" -H default --no-password >/dev/null
+          done
+          for i in $(seq 1 6); do
+            btcli wallet create -w "consequent-m2-miner-${i}" -H default --no-password >/dev/null
+          done
+
+          python - <<'PY'
+          import asyncio
+          import bittensor as bt
+          from bittensor.keyfiles import Keypair
+
+          async def main():
+              alice = Keypair.create_from_uri('//Alice')
+              roles = [('consequent-m2-owner', 6000.0)]
+              roles += [(f'consequent-m2-validator-{i}', 2500.0) for i in (1, 2)]
+              roles += [(f'consequent-m2-miner-{i}', 100.0) for i in range(1, 7)]
+              async with bt.Subtensor('local') as client:
+                  for name, amount in roles:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      result = await client.execute(
+                          bt.Transfer(dest_ss58=wallet.coldkeypub.ss58_address, amount_tao=amount),
+                          alice,
+                      )
+                      if not result.success:
+                          raise SystemExit(f'funding {name} failed: {result.error.code} {result.error.remediation}')
+          asyncio.run(main())
+          PY
+
+      - name: Register subnet, two non-owner validators, and six miners
+        run: |
+          set -euo pipefail
+          btcli tx register-subnet -w consequent-m2-owner -H default --network local -y
+          btcli tx start-call --netuid 2 -w consequent-m2-owner -H default --network local -y
+
+          for i in 1 2; do
+            btcli tx burned-register --netuid 2 -w "consequent-m2-validator-${i}" -H default --network local -y
+            sleep 13
+          done
+          for i in $(seq 1 6); do
+            btcli tx burned-register --netuid 2 -w "consequent-m2-miner-${i}" -H default --network local -y
+            sleep 13
+          done
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/m2-metagraph-registered.json
+
+      - name: Stake non-owner validators with bounded slippage
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/m2-staking.json
+          import asyncio, json
+          import bittensor as bt
+
+          def balance_evidence(balance):
+              return {
+                  'rao': int(balance.rao),
+                  'amount': float(balance.amount),
+                  'netuid': int(balance.netuid),
+                  'unit': str(balance.unit),
+              }
+
+          async def main():
+              names = ['consequent-m2-validator-1', 'consequent-m2-validator-2']
+              evidence = []
+              async with bt.Subtensor('local') as client:
+                  before = await client.subnets.metagraph(netuid=2)
+                  for name in names:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      prior = before.by_hotkey(wallet.hotkey.ss58_address)
+                      if prior is None:
+                          raise SystemExit(f'registered validator missing before stake: {name}')
+                      intent = bt.AddStake(
+                          hotkey_ss58=wallet.hotkey.ss58_address,
+                          netuid=2,
+                          amount_tao=10.0,
+                          slippage_protection=True,
+                          rate_tolerance=0.05,
+                      )
+                      plan = await client.plan(intent, wallet)
+                      result = await client.execute(intent, wallet)
+                      row = {
+                          'wallet': name,
+                          'hotkey': wallet.hotkey.ss58_address,
+                          'total_stake_before': balance_evidence(prior.total_stake),
+                          'plan': str(plan),
+                          'amount_tao': 10.0,
+                          'slippage_protection': True,
+                          'rate_tolerance': 0.05,
+                          'success': bool(result.success),
+                          'block_hash': getattr(result, 'block_hash', None),
+                          'extrinsic_id': getattr(result, 'extrinsic_id', None),
+                          'error': None if result.success else {
+                              'code': str(result.error.code),
+                              'name': str(result.error.name),
+                              'remediation': str(result.error.remediation),
+                          },
+                      }
+                      evidence.append(row)
+                      if not result.success:
+                          print(json.dumps(evidence, indent=2, default=str))
+                          raise SystemExit(f'AddStake failed for {name}')
+                      await asyncio.sleep(12.5)
+
+                  after = await client.subnets.metagraph(netuid=2)
+                  for row in evidence:
+                      neuron = after.by_hotkey(row['hotkey'])
+                      if neuron is None:
+                          raise SystemExit(f"validator disappeared after stake: {row['wallet']}")
+                      row['total_stake_after'] = balance_evidence(neuron.total_stake)
+                      row['validator_permit_before_epoch'] = bool(neuron.validator_permit)
+                      if int(neuron.total_stake.rao) <= int(row['total_stake_before']['rao']):
+                          raise SystemExit(f"stake weight did not increase for {row['wallet']}")
+              print(json.dumps(evidence, indent=2, default=str))
+          asyncio.run(main())
+          PY
+
+      - name: Wait for epoch recomputation and prove non-owner validator permits
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/m2-validator-permits.json
+          import asyncio, json
+          import bittensor as bt
+
+          def balance_evidence(balance):
+              return {
+                  'rao': int(balance.rao),
+                  'amount': float(balance.amount),
+                  'netuid': int(balance.netuid),
+                  'unit': str(balance.unit),
+              }
+
+          async def main():
+              wallets = [
+                  bt.Wallet(name='consequent-m2-owner', hotkey='default'),
+                  bt.Wallet(name='consequent-m2-validator-1', hotkey='default'),
+                  bt.Wallet(name='consequent-m2-validator-2', hotkey='default'),
+              ]
+              async with bt.Subtensor('local') as client:
+                  start = (await client.subnets.metagraph(netuid=2)).block
+                  while True:
+                      mg = await client.subnets.metagraph(netuid=2)
+                      rows = []
+                      for wallet in wallets:
+                          n = mg.by_hotkey(wallet.hotkey.ss58_address)
+                          if n is None:
+                              raise SystemExit(f'validator disappeared while waiting for permit: {wallet.name}')
+                          rows.append({
+                              'wallet': wallet.name,
+                              'uid': int(n.uid),
+                              'hotkey': wallet.hotkey.ss58_address,
+                              'total_stake': balance_evidence(n.total_stake),
+                              'validator_permit': bool(n.validator_permit),
+                              'last_update': int(n.last_update),
+                          })
+                      non_owner_permitted = all(row['validator_permit'] for row in rows[1:])
+                      if non_owner_permitted:
+                          print(json.dumps({'start_block': int(start), 'permit_block': int(mg.block), 'validators': rows}, indent=2))
+                          return
+                      if int(mg.block) - int(start) > 430:
+                          print(json.dumps({'start_block': int(start), 'current_block': int(mg.block), 'validators': rows}, indent=2))
+                          raise SystemExit('non-owner validator permits were not granted within one tempo plus margin')
+                      await asyncio.sleep(12.5)
+          asyncio.run(main())
+          PY
+
+      - name: Resolve chain-valid advertised IP
+        run: |
+          set -euo pipefail
+          ADVERTISED_IP="$(hostname -I | tr ' ' '\n' | grep -Ev '^(127\.|0\.0\.0\.0$|$)' | head -n 1)"
+          test -n "$ADVERTISED_IP"
+          echo "CONSEQUENT_M2_ADVERTISED_IP=$ADVERTISED_IP" >> "$GITHUB_ENV"
+          printf 'advertised_ip=%s\n' "$ADVERTISED_IP" | tee /tmp/m2-advertised-ip.txt
+
+      - name: Start six miners requiring real validator permits
+        run: |
+          set -euo pipefail
+          strategies=(no_memory irrelevant_memory overfit_memory useful_generalizing_memory harmful_memory policy_violating_memory)
+          for idx in $(seq 0 5); do
+            i=$((idx + 1))
+            port=$((8090 + i))
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="consequent-m2-miner-${i}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=1 \
+              CONSEQUENT_ADVERTISED_PORT="$port" \
+              CONSEQUENT_MINER_STRATEGY="${strategies[$idx]}" \
+              nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port "$port" \
+              >"/tmp/m2-miner-${i}.log" 2>&1 &
+            echo $! >"/tmp/m2-miner-${i}.pid"
+          done
+          for i in $(seq 1 6); do
+            port=$((8090 + i))
+            for attempt in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${port}/health" >/dev/null && \
+                 curl -fsS "http://${CONSEQUENT_M2_ADVERTISED_IP}:${port}/health" >/dev/null; then
+                break
+              fi
+              if [ "$attempt" -eq 30 ]; then
+                cat "/tmp/m2-miner-${i}.log"
+                exit 1
+              fi
+              sleep 1
+            done
+          done
+
+      - name: Publish six miner endpoints
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 6); do
+            port=$((8090 + i))
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="consequent-m2-miner-${i}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_ADVERTISED_IP="$CONSEQUENT_M2_ADVERTISED_IP" \
+              CONSEQUENT_ADVERTISED_PORT="$port" \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=1 \
+              python scripts/serve_endpoint.py --execute | tee "/tmp/m2-serve-${i}.txt"
+          done
+          sleep 13
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/m2-metagraph-served.json
+
+      - name: Disable commit-reveal for M2-V1 observable multi-validator settlement
+        run: |
+          set -euo pipefail
+          btcli tx set-hyperparameter \
+            --netuid 2 \
+            --name commit_reveal_weights_enabled \
+            --value false \
+            -w consequent-m2-owner -H default \
+            --network local -y
+          sleep 13
+          btcli query subnet-hyperparameters --netuid 2 --network local --json | tee /tmp/m2-hyperparameters.json
+
+      - name: Submit three independently seeded validator rows
+        run: |
+          set -euo pipefail
+          validators=(consequent-m2-owner consequent-m2-validator-1 consequent-m2-validator-2)
+          seeds=(101 202 303)
+          for idx in 0 1 2; do
+            env \
+              CONSEQUENT_NETWORK_MODE=1 \
+              CONSEQUENT_BT_NETWORK=local \
+              CONSEQUENT_NETUID=2 \
+              CONSEQUENT_WALLET="${validators[$idx]}" \
+              CONSEQUENT_HOTKEY=default \
+              CONSEQUENT_REQUIRE_VALIDATOR_PERMIT=1 \
+              python scripts/m2_multivalidator_chain.py --seed "${seeds[$idx]}" --max-wait-blocks 120 \
+              | tee "/tmp/m2-validator-row-$((idx + 1)).json"
+          done
+
+      - name: Wait one epoch and inspect actual Yuma outcome
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee /tmp/m2-yuma-chain-outcome.json
+          import asyncio, json
+          import bittensor as bt
+
+          async def main():
+              validators = [
+                  bt.Wallet(name='consequent-m2-owner', hotkey='default'),
+                  bt.Wallet(name='consequent-m2-validator-1', hotkey='default'),
+                  bt.Wallet(name='consequent-m2-validator-2', hotkey='default'),
+              ]
+              with open('/tmp/m2-validator-row-1.json', encoding='utf-8') as handle:
+                  row1 = json.load(handle)
+              top_uid = max(row1['computed_weights'], key=row1['computed_weights'].get)
+              async with bt.Subtensor('local') as client:
+                  start_mg = await client.subnets.metagraph(netuid=2)
+                  start_block = int(start_mg.block)
+                  hp = await client.subnets.subnet_hyperparameters(netuid=2)
+                  tempo = int(hp['tempo'] if isinstance(hp, dict) else hp.tempo)
+                  target = start_block + tempo + 5
+                  while True:
+                      mg = await client.subnets.metagraph(netuid=2)
+                      if int(mg.block) >= target:
+                          break
+                      await asyncio.sleep(12.5)
+                  final = await client.subnets.metagraph(netuid=2)
+                  miners = []
+                  for n in final.neurons:
+                      if not n.axon:
+                          continue
+                      miners.append({
+                          'uid': int(n.uid),
+                          'endpoint': str(n.axon),
+                          'incentive': float(n.incentive),
+                          'emission_rao': int(n.emission.rao),
+                          'emission_amount': float(n.emission.amount),
+                      })
+                  if not miners:
+                      raise SystemExit('no served miners found after Yuma epoch')
+                  actual_top = max(miners, key=lambda row: row['incentive'])['uid']
+                  payload = {
+                      'state': 'M2_MULTIVALIDATOR_CHAIN_YUMA_PASS' if int(top_uid) == actual_top else 'M2_MULTIVALIDATOR_CHAIN_YUMA_FAIL',
+                      'start_block': start_block,
+                      'final_block': int(final.block),
+                      'tempo': tempo,
+                      'expected_top_uid': int(top_uid),
+                      'actual_top_uid': actual_top,
+                      'miners': miners,
+                      'validators': [
+                          {
+                              'uid': int(final.by_hotkey(wallet.hotkey.ss58_address).uid),
+                              'hotkey': wallet.hotkey.ss58_address,
+                              'validator_permit': bool(final.by_hotkey(wallet.hotkey.ss58_address).validator_permit),
+                          }
+                          for wallet in validators
+                      ],
+                  }
+                  print(json.dumps(payload, indent=2, sort_keys=True))
+                  if payload['state'].endswith('_FAIL'):
+                      raise SystemExit('actual chain Yuma winner disagreed with independently seeded validator rows')
+          asyncio.run(main())
+          PY
+
+      - name: Upload M2-V1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consequent-m2-multivalidator-localnet-evidence
+          if-no-files-found: warn
+          path: |
+            /tmp/m2-chain-ready.json
+            /tmp/m2-metagraph-registered.json
+            /tmp/m2-staking.json
+            /tmp/m2-validator-permits.json
+            /tmp/m2-advertised-ip.txt
+            /tmp/m2-metagraph-served.json
+            /tmp/m2-hyperparameters.json
+            /tmp/m2-validator-row-*.json
+            /tmp/m2-yuma-chain-outcome.json
+            /tmp/m2-serve-*.txt
+            /tmp/m2-miner-*.log
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat /tmp/m2-chain-ready.json 2>/dev/null || true
+          cat /tmp/m2-staking.json 2>/dev/null || true
+          cat /tmp/m2-validator-permits.json 2>/dev/null || true
+          cat /tmp/m2-validator-row-*.json 2>/dev/null || true
+          cat /tmp/m2-yuma-chain-outcome.json 2>/dev/null || true
+          cat /tmp/m2-miner-*.log 2>/dev/null || true
+          docker logs consequent-m2-chain 2>/dev/null || true

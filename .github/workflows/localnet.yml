@@ -1,0 +1,270 @@
+name: localnet
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bittensor-localnet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Consequent and Bittensor 11
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Start fresh Subtensor localnet with production block timing
+        run: |
+          set -euo pipefail
+          # Pin the immutable image used by the authoritative chain-local proof.
+          # Readiness is chain-level: bootstrap subnet topology is not part of
+          # Consequent's evidence contract.
+          docker run -d --rm --name consequent-local-chain \
+            -p 9944:9944 -p 9945:9945 \
+            ghcr.io/raofoundation/subtensor-localnet@sha256:617c4316b8d9bace23e834d23ecf2b0a1b67ec781279747340bcdc47e4029d91 False
+          python scripts/localnet_ready.py \
+            --network local --attempts 90 --poll-seconds 2 --min-block 1 \
+            --output /tmp/localnet-chain-ready.json
+
+      - name: Create disposable role wallets
+        run: |
+          set -euo pipefail
+          btcli wallet create -w consequent-owner -H default --no-password >/dev/null
+          btcli wallet create -w consequent-validator -H default --no-password >/dev/null
+          btcli wallet create -w consequent-miner -H default --no-password >/dev/null
+
+      - name: Fund local wallets from Alice dev account
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import asyncio
+          import bittensor as bt
+          from bittensor.keyfiles import Keypair
+
+          async def main():
+              alice = Keypair.create_from_uri('//Alice')
+              roles = [
+                  ('consequent-owner', 2000.0),
+                  ('consequent-validator', 100.0),
+                  ('consequent-miner', 100.0),
+              ]
+              async with bt.Subtensor('local') as client:
+                  for name, amount in roles:
+                      wallet = bt.Wallet(name=name, hotkey='default')
+                      result = await client.execute(
+                          bt.Transfer(dest_ss58=wallet.coldkeypub.ss58_address, amount_tao=amount),
+                          alice,
+                      )
+                      if not result.success:
+                          raise SystemExit(f'funding {name} failed: {result.error.code}')
+          asyncio.run(main())
+          PY
+
+      - name: Register and activate Consequent development subnet
+        run: |
+          set -euo pipefail
+          btcli tx register-subnet -w consequent-owner -H default --network local -y
+          # The pinned authoritative localnet contains netuids 0 and 1; the
+          # first newly registered Consequent subnet is therefore netuid 2.
+          btcli tx start-call --netuid 2 -w consequent-owner -H default --network local -y
+
+          # Current Bittensor requires burned registration to be MEV-shielded.
+          # Production-like block timing keeps the shielded transaction era realistic.
+          btcli tx burned-register --netuid 2 -w consequent-validator -H default --network local -y
+          sleep 13
+          btcli tx burned-register --netuid 2 -w consequent-miner -H default --network local -y
+          sleep 13
+
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-before.json
+          python - <<'PY' | tee /tmp/neuron-registration.json
+          import asyncio, json
+          import bittensor as bt
+
+          async def main():
+              wallets = [
+                  bt.Wallet(name='consequent-validator', hotkey='default'),
+                  bt.Wallet(name='consequent-miner', hotkey='default'),
+              ]
+              async with bt.Subtensor('local') as client:
+                  mg = await client.subnets.metagraph(netuid=2)
+                  rows = []
+                  for wallet in wallets:
+                      try:
+                          neuron = mg.by_hotkey(wallet.hotkey.ss58_address)
+                      except Exception:
+                          neuron = None
+                      rows.append({
+                          'wallet': wallet.name,
+                          'hotkey': wallet.hotkey.ss58_address,
+                          'registered': neuron is not None,
+                          'uid': int(neuron.uid) if neuron is not None else None,
+                      })
+                  print(json.dumps(rows, indent=2))
+                  if not all(row['registered'] for row in rows):
+                      raise SystemExit('one or more Consequent neuron registrations are missing from metagraph')
+          asyncio.run(main())
+          PY
+
+      - name: Resolve chain-valid miner endpoint
+        run: |
+          set -euo pipefail
+          ADVERTISED_IP="$(hostname -I | tr ' ' '\n' | grep -Ev '^(127\.|0\.0\.0\.0$|$)' | head -n 1)"
+          if [ -z "$ADVERTISED_IP" ]; then
+            echo 'could not resolve a non-loopback runner address' >&2
+            exit 1
+          fi
+          python - "$ADVERTISED_IP" <<'PY'
+          import ipaddress, sys
+          ip = ipaddress.ip_address(sys.argv[1])
+          if ip.is_loopback or ip.is_unspecified or ip.is_multicast:
+              raise SystemExit(f'invalid advertised IP for ServeAxon: {ip}')
+          print(f'chain candidate advertised IP: {ip}')
+          PY
+          echo "CONSEQUENT_ADVERTISED_IP=$ADVERTISED_IP" >> "$GITHUB_ENV"
+          printf 'advertised_ip=%s\n' "$ADVERTISED_IP" | tee /tmp/advertised-ip.txt
+
+      - name: Start authenticated Consequent miner service
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-miner
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+          CONSEQUENT_ADVERTISED_PORT: '8091'
+          CONSEQUENT_MINER_STRATEGY: useful_generalizing_memory
+        run: |
+          set -euo pipefail
+          nohup python -m uvicorn miner.app:app --host 0.0.0.0 --port 8091 >/tmp/consequent-miner.log 2>&1 &
+          echo $! >/tmp/consequent-miner.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8091/health >/dev/null; then
+              curl -fsS "http://${CONSEQUENT_ADVERTISED_IP}:8091/health" >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/consequent-miner.log
+          exit 1
+
+      - name: Publish miner endpoint with ServeAxon
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-miner
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_ADVERTISED_PORT: '8091'
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: |
+          set -euo pipefail
+          python scripts/serve_endpoint.py --execute | tee /tmp/serve-axon.txt
+          sleep 13
+          btcli query metagraph --netuid 2 --network local --json | tee /tmp/consequent-metagraph-after.json
+
+      - name: Probe validator registration and discover served miner
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-validator
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: |
+          set -euo pipefail
+          python scripts/chain_probe.py --require-registered --require-served-miner | tee /tmp/chain-probe.json
+
+      - name: Run real signed validator to miner round trip
+        env:
+          CONSEQUENT_NETWORK_MODE: '1'
+          CONSEQUENT_BT_NETWORK: local
+          CONSEQUENT_NETUID: '2'
+          CONSEQUENT_WALLET: consequent-validator
+          CONSEQUENT_HOTKEY: default
+          CONSEQUENT_REQUIRE_VALIDATOR_PERMIT: '0'
+        run: |
+          set -euo pipefail
+          python scripts/localnet_roundtrip.py | tee /tmp/localnet-roundtrip.json
+
+      - name: Configure deterministic M0 weight visibility
+        run: |
+          set -euo pipefail
+          # M0 disables only the owner-settable visibility delay so SetWeights
+          # can be read back deterministically. Runtime-owned rate limits remain live.
+          btcli tx set-hyperparameter \
+            --netuid 2 \
+            --name commit_reveal_weights_enabled \
+            --value false \
+            -w consequent-owner -H default \
+            --network local -y
+          sleep 13
+          btcli query subnet-hyperparameters --netuid 2 --network local --json | tee /tmp/consequent-weight-hyperparameters.json
+          python - <<'PY'
+          import json
+          with open('/tmp/consequent-weight-hyperparameters.json', encoding='utf-8') as handle:
+              hp = json.load(handle)
+          if bool(hp['commit_reveal_weights_enabled']):
+              raise SystemExit('commit-reveal remained enabled in deterministic M0 weight fixture')
+          if int(hp['weights_rate_limit']) <= 0:
+              raise SystemExit('expected a positive live weights_rate_limit to exercise runtime compliance')
+          PY
+
+      - name: Execute and read back localnet SetWeights
+        run: |
+          set -euo pipefail
+          MINER_HOTKEY="$(python - <<'PY'
+          import bittensor as bt
+          print(bt.Wallet(name='consequent-miner', hotkey='default').hotkey.ss58_address)
+          PY
+          )"
+          python scripts/localnet_weights.py \
+            --network local --netuid 2 \
+            --wallet consequent-owner --hotkey default \
+            --target-hotkey "$MINER_HOTKEY" \
+            --max-wait-blocks 120 \
+            | tee /tmp/localnet-weights.json
+
+      - name: Upload localnet evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consequent-localnet-evidence
+          if-no-files-found: warn
+          path: |
+            /tmp/localnet-chain-ready.json
+            /tmp/neuron-registration.json
+            /tmp/advertised-ip.txt
+            /tmp/consequent-metagraph-before.json
+            /tmp/consequent-metagraph-after.json
+            /tmp/consequent-weight-hyperparameters.json
+            /tmp/serve-axon.txt
+            /tmp/chain-probe.json
+            /tmp/localnet-roundtrip.json
+            /tmp/localnet-weights.json
+            /tmp/consequent-miner.log
+
+      - name: Show diagnostics on failure
+        if: failure()
+        run: |
+          cat /tmp/localnet-chain-ready.json 2>/dev/null || true
+          cat /tmp/neuron-registration.json 2>/dev/null || true
+          cat /tmp/advertised-ip.txt 2>/dev/null || true
+          cat /tmp/serve-axon.txt 2>/dev/null || true
+          cat /tmp/chain-probe.json 2>/dev/null || true
+          cat /tmp/localnet-roundtrip.json 2>/dev/null || true
+          cat /tmp/consequent-weight-hyperparameters.json 2>/dev/null || true
+          cat /tmp/localnet-weights.json 2>/dev/null || true
+          cat /tmp/consequent-miner.log 2>/dev/null || true
+          docker logs consequent-local-chain 2>/dev/null || true
